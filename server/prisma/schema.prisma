@@ -7,12 +7,12 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
-// ========================================================
-// ENUMS
-// ========================================================
+enum Role {
+  USER
+  ADMIN
+}
 
 enum OrgType {
   COLLEGE
@@ -105,13 +105,15 @@ model Organization {
 
 model User {
   id                 String             @id @default(uuid())
-  organizationId     String
-  fullName           String             @db.VarChar(150)
+  organizationId     String?
+  name               String             @db.VarChar(150)
   email              String             @unique @db.VarChar(255)
   passwordHash       String             @db.VarChar(255)
-  phone              String             @db.VarChar(20)
+  phone              String?            @db.VarChar(20)
+  role               Role               @default(USER)
+  isVerified         Boolean            @default(false)
   avatarUrl          String?            @db.VarChar(500)
-  orgEmail           String             @db.VarChar(255)
+  orgEmail           String?            @db.VarChar(255)
   orgRole            OrgRole            @default(STUDENT)
   orgIdBadgeUrl      String?            @db.VarChar(500)
   isOrgVerified      Boolean            @default(false)
@@ -133,7 +135,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization           Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   vehicles               Vehicle[]
   ridesDriven            Ride[]         @relation("DriverRides")
   bookings               Booking[]      @relation("PassengerBookings")

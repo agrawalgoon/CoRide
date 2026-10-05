@@ -7,12 +7,12 @@ const startServer = async () => {
   console.log(`Starting CoRide API Server [${ENV.NODE_ENV}]...`);
   console.log('--------------------------------------------------');
 
-  // Attempt database connection
+  // Attempt database connection (non-fatal if temporarily offline)
   await connectDB();
 
   const server = app.listen(ENV.PORT, () => {
     console.log(`[HTTP] CoRide server listening on http://localhost:${ENV.PORT}`);
-    console.log(`[HTTP] Health check: http://localhost:${ENV.PORT}/api/v1/health`);
+    console.log(`[HTTP] Health check: http://localhost:${ENV.PORT}/api/health`);
     console.log('--------------------------------------------------');
   });
 

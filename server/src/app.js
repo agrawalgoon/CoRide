@@ -2,14 +2,41 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+
 import { ENV } from './config/env.js';
 import healthRoutes from './routes/health.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import usersRoutes from './routes/users.routes.js';
+import organizationsRoutes from './routes/organizations.routes.js';
+import vehiclesRoutes from './routes/vehicles.routes.js';
+import ridesRoutes from './routes/rides.routes.js';
+import bookingsRoutes from './routes/bookings.routes.js';
+import attendanceRoutes from './routes/attendance.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
+
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
 // Security Headers
 app.use(helmet());
+
+// Rate Limiting (100 requests per 15 minutes per IP)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      message: 'Too many requests from this IP, please try again later.',
+      code: 'RATE_LIMIT_EXCEEDED'
+    }
+  }
+});
+app.use('/api', apiLimiter);
 
 // Cross-Origin Resource Sharing
 app.use(cors({
@@ -32,16 +59,26 @@ if (ENV.NODE_ENV !== 'test') {
 app.get('/', (req, res) => {
   res.json({
     name: 'CoRide API',
-    tagline: 'Campus & Corporate Carpooling Platform',
+    tagline: 'Enterprise & Campus Carpooling Platform',
     status: 'ONLINE',
-    documentation: '/api/v1/health'
+    health: '/api/health'
   });
 });
 
-// Primary Health Check Route
-app.use('/api/v1', healthRoutes);
+// Health check endpoint (GET /api/health)
+app.use('/api/health', healthRoutes);
 
-// Fallback 404 & Error Handler
+// Core API Route Groups (all prefixed with /api)
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/organizations', organizationsRoutes);
+app.use('/api/vehicles', vehiclesRoutes);
+app.use('/api/rides', ridesRoutes);
+app.use('/api/bookings', bookingsRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/notifications', notificationsRoutes);
+
+// Fallback 404 & Centralized Error Handler
 app.use(notFoundHandler);
 app.use(errorHandler);
 

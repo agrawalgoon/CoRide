@@ -1,30 +1,85 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { ENV } from './env.js';
 
-export const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error']
-});
+// Prevent multiple PrismaClient instances during development/hot reload
+const globalForPrisma = globalThis;
+
+const createPrismaClient = () => {
+  const url = new URL(ENV.DATABASE_URL);
+
+  const adapter = new PrismaMariaDb({
+    host: url.hostname,
+    port: Number(url.port) || 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: url.pathname.replace(/^\//, ''),
+    connectionLimit: 5,
+    connectTimeout: 10000
+  });
+
+  return new PrismaClient({
+    adapter,
+    log: ENV.NODE_ENV === 'development'
+      ? ['warn', 'error']
+      : ['error']
+  });
+};
+
+export const prisma =
+  globalForPrisma.prisma || createPrismaClient();
+
+if (ENV.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
 
 let isConnected = false;
 
-export const connectDB = async () => {
+/**
+ * Check whether Prisma can communicate with MySQL.
+ */
+export const checkDBConnection = async () => {
   try {
-    // Execute a simple ping query to check database connectivity
     await prisma.$queryRaw`SELECT 1`;
+
     isConnected = true;
-    console.log('[MySQL] Connected successfully to MySQL 8 database via Prisma.');
     return true;
   } catch (error) {
     isConnected = false;
-    console.warn(`[MySQL] Database connection notice: ${error.message}`);
-    console.warn('[MySQL] Note: Ensure MySQL 8 is running and verify DATABASE_URL in server/.env');
+
+    console.error(
+      '[MySQL] Connection check failed:',
+      error.message
+    );
+
     return false;
   }
 };
 
-export const getDBStatus = () => {
-  return {
-    type: 'MySQL 8 (Prisma ORM)',
-    status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
-    isLive: isConnected
-  };
+/**
+ * Initial database connection check.
+ */
+export const connectDB = async () => {
+  const connected = await checkDBConnection();
+
+  if (connected) {
+    console.log(
+      '[MySQL] Connected successfully to MySQL 8 database via Prisma 7.'
+    );
+  } else {
+    console.warn(
+      '[MySQL] Database connection attempt failed.'
+    );
+  }
+
+  return connected;
 };
+
+/**
+ * Current database status.
+ */
+export const getDBStatus = () => ({
+  type: 'MySQL 8 (Prisma 7 ORM)',
+  status: isConnected ? 'connected' : 'disconnected',
+  isLive: isConnected
+});

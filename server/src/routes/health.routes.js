@@ -1,43 +1,31 @@
 import { Router } from 'express';
-import { ENV } from '../config/env.js';
-import { prisma, getDBStatus } from '../config/db.js';
+import { checkDBConnection } from '../config/db.js';
 
 const router = Router();
 
-router.get('/health', async (req, res) => {
-  let dbLive = false;
-  let dbLatencyMs = null;
+/**
+ * Health check handler verifying both API server status and Prisma/MySQL connectivity.
+ */
+const handleHealthCheck = async (req, res) => {
+  const isDbConnected = await checkDBConnection(2500);
 
-  try {
-    const startTime = Date.now();
-    await prisma.$queryRaw`SELECT 1`;
-    dbLatencyMs = Date.now() - startTime;
-    dbLive = true;
-  } catch (err) {
-    dbLive = false;
+  if (!isDbConnected) {
+    return res.status(503).json({
+      success: false,
+      message: 'CoRide API is running',
+      database: 'unavailable'
+    });
   }
 
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
-    service: 'CoRide API Server',
-    version: '1.0.0',
-    environment: ENV.NODE_ENV,
-    timestamp: new Date().toISOString(),
-    uptimeSeconds: Math.floor(process.uptime()),
-    database: {
-      type: 'MySQL 8 (Prisma ORM)',
-      status: dbLive ? 'CONNECTED' : 'DISCONNECTED',
-      isLive: dbLive,
-      latencyMs: dbLatencyMs
-    },
-    features: {
-      findPool: 'READY',
-      offerPool: 'READY',
-      alerts: 'READY',
-      profile: 'READY',
-      myRides: 'READY'
-    }
+    message: 'CoRide API is running',
+    database: 'connected'
   });
-});
+};
+
+// Supports both direct /api/health or sub-router mounting
+router.get('/health', handleHealthCheck);
+router.get('/', handleHealthCheck);
 
 export default router;
