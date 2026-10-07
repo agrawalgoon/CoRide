@@ -137,6 +137,7 @@ model User {
   // Relations
   organization           Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   vehicles               Vehicle[]
+    emailVerificationOtps EmailVerificationOtp[]
   ridesDriven            Ride[]         @relation("DriverRides")
   bookings               Booking[]      @relation("PassengerBookings")
   notificationsReceived  Notification[] @relation("RecipientNotifications")
@@ -146,6 +147,25 @@ model User {
   @@index([email])
   @@index([verificationStatus])
   @@map("users")
+}
+// ========================================================
+// EMAIL VERIFICATION OTP
+// ========================================================
+
+model EmailVerificationOtp {
+  id         String   @id @default(uuid())
+  userId     String
+  otpHash    String   @db.VarChar(255)
+  expiresAt  DateTime
+  attempts   Int      @default(0)
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_otps")
 }
 
 // ========================================================

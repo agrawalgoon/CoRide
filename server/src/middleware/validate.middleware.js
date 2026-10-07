@@ -7,13 +7,15 @@ export const validate = (schema) => (req, res, next) => {
     const result = schema.safeParse(req.body);
 
     if (!result.success) {
-      const issues = result.error.errors.map((err) => ({
-        field: err.path.join('.'),
+      const rawIssues = result.error.issues || result.error.errors || [];
+      const issues = rawIssues.map((err) => ({
+        field: Array.isArray(err.path) ? err.path.join('.') : '',
         message: err.message
       }));
 
       return res.status(400).json({
         success: false,
+        message: issues[0]?.message || 'Validation error',
         error: {
           message: issues[0]?.message || 'Validation error',
           code: 'VALIDATION_ERROR',
