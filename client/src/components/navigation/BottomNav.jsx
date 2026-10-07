@@ -1,25 +1,20 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Search, PlusCircle, CalendarCheck, Bell, User } from 'lucide-react';
+import { Search, PlusCircle, Bell, User } from 'lucide-react';
 
 export default function BottomNav() {
   const navItems = [
     {
-      to: '/',
-      label: 'Find',
+      to: '/find',
+      label: 'Find Pool',
       icon: Search,
-      exact: true
+      exact: false
     },
     {
       to: '/offer',
-      label: 'Offer',
+      label: 'Offer Pool',
       icon: PlusCircle,
       isAction: true
-    },
-    {
-      to: '/my-rides',
-      label: 'My Rides',
-      icon: CalendarCheck
     },
     {
       to: '/alerts',
@@ -46,7 +41,7 @@ export default function BottomNav() {
             end={item.exact}
             className={({ isActive }) => `
               relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all duration-150 min-w-[58px]
-              ${isActive ? 'text-coride-dark font-bold' : 'text-slate-400 hover:text-slate-600 font-medium'}
+              ${isActive ? 'text-emerald-700 font-bold' : 'text-slate-400 hover:text-slate-600 font-medium'}
             `}
           >
             {({ isActive }) => (
@@ -56,14 +51,14 @@ export default function BottomNav() {
                     <div className={`
                       w-9 h-9 rounded-2xl flex items-center justify-center transition-all shadow-sm
                       ${isActive 
-                        ? 'bg-coride-dark text-white ring-2 ring-coride-light ring-offset-1' 
-                        : 'bg-coride-light text-coride-dark hover:bg-emerald-100'}
+                        ? 'bg-emerald-700 text-white ring-2 ring-emerald-100 ring-offset-1' 
+                        : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'}
                     `}>
                       <Icon className="w-5 h-5 stroke-[2.2]" />
                     </div>
                   ) : (
-                    <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-coride-light/60' : ''}`}>
-                      <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5] text-coride-dark' : 'stroke-[1.8]'}`} />
+                    <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-emerald-50' : ''}`}>
+                      <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5] text-emerald-700' : 'stroke-[1.8]'}`} />
                     </div>
                   )}
 
@@ -75,14 +70,9 @@ export default function BottomNav() {
                   )}
                 </div>
 
-                <span className={`text-[10px] tracking-tight mt-0.5 ${isActive ? 'text-coride-dark' : 'text-slate-500'}`}>
+                <span className={`text-[10px] tracking-tight mt-0.5 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`}>
                   {item.label}
                 </span>
-
-                {/* Subtle active underline dot */}
-                {isActive && !item.isAction && (
-                  <span className="w-1 h-1 bg-coride-primary rounded-full mt-0.5"></span>
-                )}
               </>
             )}
           </NavLink>
