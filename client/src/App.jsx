@@ -10,6 +10,7 @@ import VerifyOrganization from './pages/auth/VerifyOrganization';
 
 // Find Pages
 import FindPoolPage from './pages/find/FindPoolPage';
+import SearchResultsPage from './pages/find/SearchResultsPage';
 import RideDetails from './pages/find/RideDetails';
 
 // Offer Pages
@@ -38,6 +39,7 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/find" replace />} />
           <Route path="/find" element={<FindPoolPage />} />
+          <Route path="/find/results" element={<SearchResultsPage />} />
           <Route path="/rides/:rideId" element={<RideDetails />} />
           
           <Route path="/offer" element={<OfferPoolPage />} />
