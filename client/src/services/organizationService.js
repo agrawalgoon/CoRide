@@ -10,12 +10,12 @@ export const linkOrganization = async (organizationId, orgEmail) => {
   return response.data;
 };
 
-export const requestOtp = async () => {
+export const requestOrganizationOtp = async () => {
   const response = await api.post('/users/organization/request-otp');
   return response.data;
 };
 
-export const verifyOtp = async (otp) => {
+export const verifyOrganizationOtp = async (otp) => {
   const response = await api.post('/users/organization/verify-otp', { otp });
   return response.data;
 };

@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Mail, Building, CheckCircle, AlertCircle } from 'lucide-react';
-import { getOrganizations, linkOrganization, requestOtp, verifyOtp } from '../../services/organizationService';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { ShieldCheck, Building, CheckCircle, AlertCircle, Mail, Info } from 'lucide-react';
+import { getOrganizations, linkOrganization, requestOrganizationOtp, verifyOrganizationOtp } from '../../services/organizationService';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function VerifyOrganization() {
-  const { user, refreshUser } = useAuth();
+  const { isAuthenticated, loading, user, refreshUser } = useAuth();
   const navigate = useNavigate();
   
   const [organizations, setOrganizations] = useState([]);
   const [selectedOrgId, setSelectedOrgId] = useState('');
+  const [orgEmail, setOrgEmail] = useState('');
   
-  const [step, setStep] = useState(1); // 1: Select Org & Request, 2: Enter OTP, 3: Success
+  const [step, setStep] = useState(1); // 1: Org & Email, 2: Enter OTP, 3: Success
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const otpRefs = useRef([]);
   
@@ -19,21 +20,25 @@ export default function VerifyOrganization() {
   const [error, setError] = useState('');
   
   const [countdown, setCountdown] = useState(0);
+  const [devOtp, setDevOtp] = useState('');
 
+  // Fetch organizations
   useEffect(() => {
     const fetchOrgs = async () => {
       try {
         const data = await getOrganizations();
-        // Extract array if backend wraps in { success: true, data: [...] }
         const orgs = Array.isArray(data) ? data : (data.data || []);
         setOrganizations(orgs);
       } catch (err) {
         console.error('Failed to load organizations', err);
       }
     };
-    fetchOrgs();
-  }, []);
+    if (isAuthenticated) {
+      fetchOrgs();
+    }
+  }, [isAuthenticated]);
 
+  // Countdown timer for resend
   useEffect(() => {
     let timer;
     if (countdown > 0) {
@@ -42,27 +47,42 @@ export default function VerifyOrganization() {
     return () => clearTimeout(timer);
   }, [countdown]);
 
-  const handleSendOtp = async () => {
-    if (!selectedOrgId) {
-      setError('Please select an organization');
+  // Wait for auth to resolve
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-emerald-700">Loading...</div>;
+  }
+
+  // Redirect if not authenticated
+  if (!isAuthenticated) {
+    return <Navigate to="/auth/login" replace />;
+  }
+
+  const handleContinue = async () => {
+    if (!selectedOrgId || !orgEmail) {
+      setError('Please select an organization and enter your organization email.');
       return;
     }
     
     setIsLoading(true);
     setError('');
+    setDevOtp('');
     
     try {
-      // 1. Link organization using registered email
-      await linkOrganization(selectedOrgId, user?.email);
+      // 1. Link organization
+      await linkOrganization(selectedOrgId, orgEmail);
       
-      // 2. Request OTP
-      await requestOtp();
+      // 2. Automatically request OTP
+      const otpResponse = await requestOrganizationOtp();
+      
+      if (otpResponse.devOtp) {
+        setDevOtp(otpResponse.devOtp);
+      }
       
       setStep(2);
       setCountdown(60);
       setOtp(['', '', '', '', '', '']);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send OTP.');
+      setError(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to process request.');
     } finally {
       setIsLoading(false);
     }
@@ -71,12 +91,16 @@ export default function VerifyOrganization() {
   const handleResendOtp = async () => {
     setIsLoading(true);
     setError('');
+    setDevOtp('');
     try {
-      await requestOtp();
+      const otpResponse = await requestOrganizationOtp();
+      if (otpResponse.devOtp) {
+        setDevOtp(otpResponse.devOtp);
+      }
       setCountdown(60);
       setOtp(['', '', '', '', '', '']);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to resend OTP.');
+      setError(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to resend OTP.');
     } finally {
       setIsLoading(false);
     }
@@ -111,14 +135,14 @@ export default function VerifyOrganization() {
     setIsLoading(true);
     setError('');
     try {
-      await verifyOtp(otpValue);
+      await verifyOrganizationOtp(otpValue);
       await refreshUser();
       setStep(3); // Success step
       setTimeout(() => {
         navigate('/find');
-      }, 2000);
+      }, 1500);
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid OTP. Please try again.');
+      setError(err.response?.data?.message || err.response?.data?.error?.message || 'Invalid OTP. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -143,7 +167,7 @@ export default function VerifyOrganization() {
         </div>
         <h2 className="text-2xl font-bold text-slate-900 mb-2">Verify your organization</h2>
         <p className="text-slate-500 text-sm max-w-sm mx-auto">
-          Verify your college or organization email to access CoRide.
+          Connect your college or organization account to start using CoRide.
         </p>
       </div>
 
@@ -156,16 +180,8 @@ export default function VerifyOrganization() {
 
       {step === 1 && (
         <div className="space-y-6">
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Registered Email</label>
-            <div className="flex items-center space-x-3 text-slate-700 font-medium">
-              <Mail className="w-5 h-5 text-slate-400" />
-              <span>{user?.email || 'Loading...'}</span>
-            </div>
-          </div>
-
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Select Organization</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Organization</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Building className="h-5 w-5 text-slate-400" />
@@ -175,20 +191,40 @@ export default function VerifyOrganization() {
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 className="block w-full pl-10 pr-10 py-3 text-base border-slate-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-xl appearance-none bg-white border shadow-sm"
               >
-                <option value="" disabled>Select your college/company...</option>
+                <option value="" disabled>Search or select your organization...</option>
                 {organizations.map((org) => (
-                  <option key={org.id} value={org.id}>{org.name}</option>
+                  <option key={org.id} value={org.id}>
+                    {org.name} {org.type ? `(${org.type})` : ''}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
 
+          {selectedOrgId && (
+            <div className="animate-in fade-in slide-in-from-top-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Organization Email</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-slate-400" />
+                </div>
+                <input
+                  type="email"
+                  placeholder="e.g. yourname@mgm.edu.in"
+                  value={orgEmail}
+                  onChange={(e) => setOrgEmail(e.target.value)}
+                  className="block w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm shadow-sm"
+                />
+              </div>
+            </div>
+          )}
+
           <button
-            onClick={handleSendOtp}
-            disabled={isLoading || !selectedOrgId}
+            onClick={handleContinue}
+            disabled={isLoading || !selectedOrgId || !orgEmail}
             className="w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl shadow-md shadow-emerald-200 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 transition-colors"
           >
-            {isLoading ? 'Sending OTP...' : 'Send OTP'}
+            {isLoading ? 'Processing...' : 'Continue'}
           </button>
         </div>
       )}
@@ -196,8 +232,9 @@ export default function VerifyOrganization() {
       {step === 2 && (
         <div className="space-y-6">
           <div className="text-center">
-            <p className="text-sm text-slate-600 mb-1">Enter the 6-digit code sent to</p>
-            <p className="font-semibold text-slate-900">{user?.email}</p>
+            <h3 className="font-semibold text-slate-900 mb-1">Verify your email</h3>
+            <p className="text-sm text-slate-600">Enter the 6-digit OTP sent to</p>
+            <p className="font-semibold text-slate-900 mt-1">{orgEmail}</p>
           </div>
 
           <form onSubmit={handleVerify} className="space-y-6">
@@ -215,6 +252,16 @@ export default function VerifyOrganization() {
                 />
               ))}
             </div>
+
+            {devOtp && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start space-x-2 text-sm text-blue-800">
+                <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
+                <div>
+                  <p className="font-semibold">Development Helper</p>
+                  <p>Development OTP: <span className="font-mono font-bold">{devOtp}</span></p>
+                </div>
+              </div>
+            )}
 
             <button
               type="submit"
