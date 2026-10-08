@@ -27,7 +27,7 @@ export default function VerifyOrganization() {
     const fetchOrgs = async () => {
       try {
         const data = await getOrganizations();
-        const orgs = Array.isArray(data) ? data : (data.data || []);
+        const orgs = Array.isArray(data) ? data : (data?.data || []);
         setOrganizations(orgs);
       } catch (err) {
         console.error('Failed to load organizations', err);
