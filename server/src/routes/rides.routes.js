@@ -6,12 +6,16 @@ import {
   getMyRides,
   getRideById,
   updateRide,
-  deleteRide
+  deleteRide,
+  getMatches
 } from '../controllers/rides.controller.js';
 
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 const router = Router();
+
+// Protected: AI matching for passenger
+router.get('/matches', authenticateToken, getMatches);
 
 // Public: search/list scheduled rides
 router.get('/', getRides);

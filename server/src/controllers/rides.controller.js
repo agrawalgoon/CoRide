@@ -1,4 +1,5 @@
 import { prisma } from '../config/db.js';
+import { generateMatches } from '../services/matching/matching.service.js';
 
 const rideSelect = {
   id: true,
@@ -15,8 +16,9 @@ const rideSelect = {
   departureTime: true,
   totalSeats: true,
   availableSeats: true,
-  pricePerSeat: true,
-  isRecurring: true,
+ pricePerSeat: true,
+totalTripCost: true,
+isRecurring: true,
   recurringDays: true,
   ladiesOnly: true,
   luggageAllowed: true,
@@ -42,7 +44,8 @@ export const createRide = async (req, res, next) => {
       departureTime,
       totalSeats,
       pricePerSeat,
-      isRecurring,
+      totalTripCost,
+    isRecurring,
       recurringDays,
       ladiesOnly,
       luggageAllowed,
@@ -62,6 +65,14 @@ export const createRide = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'All required ride fields must be provided'
+      });
+    }
+
+    const parsedDepartureTime = new Date(departureTime);
+    if (isNaN(parsedDepartureTime.getTime()) || parsedDepartureTime <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'departureTime must be a valid date in the future'
       });
     }
 
@@ -111,13 +122,18 @@ export const createRide = async (req, res, next) => {
         destinationLatitude: Number(destinationLatitude),
         destinationLongitude: Number(destinationLongitude),
 
-        departureTime: new Date(departureTime),
+        departureTime: parsedDepartureTime,
 
         totalSeats: requestedSeats,
         availableSeats: requestedSeats,
 
-        pricePerSeat:
-          pricePerSeat !== undefined ? Number(pricePerSeat) : 0,
+       pricePerSeat:
+  pricePerSeat !== undefined ? Number(pricePerSeat) : 0,
+
+totalTripCost:
+  totalTripCost !== undefined ? Number(totalTripCost) : 0,
+
+isRecurring: Boolean(isRecurring),
 
         isRecurring: Boolean(isRecurring),
         recurringDays: recurringDays || null,
@@ -338,6 +354,16 @@ export const updateRide = async (req, res, next) => {
       geofenceRadiusMeters
     } = req.body;
 
+    if (departureTime !== undefined) {
+      const parsedDepartureTime = new Date(departureTime);
+      if (isNaN(parsedDepartureTime.getTime()) || parsedDepartureTime <= new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: 'departureTime must be a valid date in the future'
+        });
+      }
+    }
+
     const ride = await prisma.ride.update({
       where: { id },
       data: {
@@ -436,6 +462,89 @@ export const deleteRide = async (req, res, next) => {
       message: 'Ride cancelled successfully',
       ride: cancelledRide
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMatches = async (req, res, next) => {
+  try {
+    const {
+      pickupLatitude,
+      pickupLongitude,
+      dropLatitude,
+      dropLongitude,
+      departureTime,
+      seats = 1
+    } = req.query;
+
+    if (
+      pickupLatitude === undefined ||
+      pickupLongitude === undefined ||
+      dropLatitude === undefined ||
+      dropLongitude === undefined ||
+      !departureTime
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Coordinates (pickup & drop) and departureTime are required for matching.'
+      });
+    }
+
+    const lat1 = Number(pickupLatitude);
+    const lon1 = Number(pickupLongitude);
+    const lat2 = Number(dropLatitude);
+    const lon2 = Number(dropLongitude);
+    const reqSeats = Number(seats);
+    const parsedDepartureTime = new Date(departureTime);
+
+    if (
+      !Number.isFinite(lat1) || !Number.isFinite(lon1) ||
+      !Number.isFinite(lat2) || !Number.isFinite(lon2)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid coordinate values.'
+      });
+    }
+
+    if (isNaN(parsedDepartureTime.getTime()) || parsedDepartureTime <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'departureTime must be a valid future date.'
+      });
+    }
+
+    if (!Number.isInteger(reqSeats) || reqSeats < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'seats must be a positive integer.'
+      });
+    }
+
+    // Fetch passenger's orgId
+    const passenger = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { organizationId: true }
+    });
+
+    const matches = await generateMatches({
+      passengerId: req.user.userId,
+      passengerOrgId: passenger?.organizationId,
+      pickupLatitude: lat1,
+      pickupLongitude: lon1,
+      dropLatitude: lat2,
+      dropLongitude: lon2,
+      departureTime: parsedDepartureTime,
+      seats: reqSeats
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: matches.length,
+      matches
+    });
+
   } catch (error) {
     next(error);
   }

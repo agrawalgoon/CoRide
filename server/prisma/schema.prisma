@@ -140,6 +140,7 @@ model User {
     emailVerificationOtps EmailVerificationOtp[]
   ridesDriven            Ride[]         @relation("DriverRides")
   bookings               Booking[]      @relation("PassengerBookings")
+  attendanceLogs         AttendanceLog[] @relation("PassengerAttendanceLogs")
   notificationsReceived  Notification[] @relation("RecipientNotifications")
   notificationsSent      Notification[] @relation("SenderNotifications")
 
@@ -215,9 +216,10 @@ model Ride {
   destinationLatitude  Float
   destinationLongitude Float
   departureTime        DateTime
-  totalSeats           Int
-  availableSeats       Int
-  pricePerSeat         Float      @default(0.00)
+  totalSeats            Int
+availableSeats        Int
+pricePerSeat          Float      @default(0.00)
+totalTripCost         Float      @default(0.00)
   isRecurring          Boolean    @default(false)
   recurringDays        Json?      // E.g. ["MON", "TUE", "WED", "THU", "FRI"]
   ladiesOnly           Boolean    @default(false)
@@ -285,22 +287,28 @@ model Booking {
 // ========================================================
 
 model AttendanceLog {
-  id                     String   @id @default(uuid())
+  id                     String           @id @default(uuid())
   bookingId              String
   rideId                 String
-  driverLatitude         Float
-  driverLongitude        Float
-  distanceToPickupMeters Float
-  isGeofenceValid        Boolean
-  qrTokenHash            String   @db.VarChar(128)
-  verifiedAt             DateTime @default(now())
+  passengerId            String
+  method                 AttendanceMethod
+  driverLatitude         Float?
+  driverLongitude        Float?
+  passengerLatitude      Float?
+  passengerLongitude     Float?
+  distanceToPickupMeters Float?
+  isGeofenceValid        Boolean?
+  tokenHash              String?          @db.VarChar(128)
+  verifiedAt             DateTime         @default(now())
 
   // Relations
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  ride    Ride    @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  ride      Ride    @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  passenger User    @relation("PassengerAttendanceLogs", fields: [passengerId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
   @@index([rideId])
+  @@index([passengerId])
   @@map("attendance_logs")
 }
 
