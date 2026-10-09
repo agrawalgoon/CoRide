@@ -1,236 +1,139 @@
-import React, { useState } from 'react';
-import { MapPin, Calendar, Users, Car, CheckCircle } from 'lucide-react';
-import api from '../../services/api';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PlusCircle, Clock, CheckCircle, XCircle, ChevronRight, Car } from 'lucide-react';
+import { getMyRides } from '../../services/rideService';
 
 export default function OfferPoolPage() {
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    origin: '',
-    destination: '',
-    date: '',
-    time: '',
-    vehicleId: '',
-    seats: 3,
-    pricePerKm: 5,
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const navigate = useNavigate();
+  const [rides, setRides] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('upcoming');
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      await api.post('/rides', formData);
-      setIsSuccess(true);
-    } catch (error) {
-      // simulate success for MVP if API fails
-      setIsSuccess(true);
-    } finally {
-      setIsSubmitting(false);
+  useEffect(() => {
+    const fetchMyRides = async () => {
+      try {
+        const response = await getMyRides();
+        setRides(response.rides || []);
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load your rides. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMyRides();
+  }, []);
+
+  const upcomingRides = rides.filter(r => ['SCHEDULED', 'PUBLISHED'].includes(r.status));
+  const completedRides = rides.filter(r => r.status === 'COMPLETED');
+  const cancelledRides = rides.filter(r => r.status === 'CANCELLED');
+
+  const getActiveRides = () => {
+    switch(activeTab) {
+      case 'completed': return completedRides;
+      case 'cancelled': return cancelledRides;
+      default: return upcomingRides;
     }
   };
 
-  if (isSuccess) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-        <CheckCircle className="w-20 h-20 text-emerald-500" />
-        <h2 className="text-2xl font-bold text-slate-800">Ride Published!</h2>
-        <p className="text-slate-500">Your ride is now visible to other members.</p>
-        <button 
-          onClick={() => { setStep(1); setIsSuccess(false); }}
-          className="mt-6 px-6 py-2 bg-emerald-100 text-emerald-800 font-medium rounded-full hover:bg-emerald-200 transition-colors"
-        >
-          Offer Another Ride
-        </button>
-      </div>
-    );
-  }
+  const activeRides = getActiveRides();
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">Offer a Ride</h1>
-        <p className="text-slate-500">Share your ride. Split the cost. Help your community move.</p>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+      <div className="bg-emerald-700 text-white p-6 rounded-3xl shadow-lg -mx-4 sm:mx-0 mt-[-1.5rem] sm:mt-0 pb-10">
+        <h1 className="text-3xl font-bold mb-2">Offer a Ride</h1>
+        <p className="text-emerald-100 mb-6 font-medium">Share your journey, reduce travel costs, and help your community commute.</p>
+        
+        <button 
+          onClick={() => navigate('/offer/create')}
+          className="w-full flex items-center justify-center space-x-2 bg-white text-emerald-700 font-bold py-3.5 rounded-xl hover:bg-emerald-50 transition-colors shadow-lg"
+        >
+          <PlusCircle className="w-5 h-5" />
+          <span>Offer a Ride</span>
+        </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        {step === 1 && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">Where are you going?</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Leaving from</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <MapPin className="text-emerald-500 w-5 h-5" />
-                  <input 
-                    type="text" 
-                    value={formData.origin}
-                    onChange={(e) => setFormData({...formData, origin: e.target.value})}
-                    placeholder="E.g. Home" 
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Going to</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <MapPin className="text-rose-500 w-5 h-5" />
-                  <input 
-                    type="text" 
-                    value={formData.destination}
-                    onChange={(e) => setFormData({...formData, destination: e.target.value})}
-                    placeholder="E.g. Office / Campus" 
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                  />
-                </div>
-              </div>
-            </div>
-            <button 
-              onClick={() => setStep(2)}
-              disabled={!formData.origin || !formData.destination}
-              className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+      <div className="pt-2">
+        <h2 className="text-xl font-bold text-slate-900 mb-4 px-1">My Offered Rides</h2>
+        
+        <div className="flex bg-slate-100 p-1 rounded-xl mb-5 mx-1">
+          {['upcoming', 'completed', 'cancelled'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg capitalize transition-colors ${
+                activeTab === tab 
+                  ? 'bg-white text-emerald-700 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
             >
-              Continue
+              {tab}
             </button>
-          </div>
-        )}
+          ))}
+        </div>
 
-        {step === 2 && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">When are you leaving?</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Date</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <Calendar className="text-slate-400 w-5 h-5" />
-                  <input 
-                    type="date" 
-                    value={formData.date}
-                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Time</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <input 
-                    type="time" 
-                    value={formData.time}
-                    onChange={(e) => setFormData({...formData, time: e.target.value})}
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex space-x-3">
-              <button 
-                onClick={() => setStep(1)}
-                className="w-1/3 bg-slate-100 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-200"
-              >
-                Back
-              </button>
-              <button 
-                onClick={() => setStep(3)}
-                disabled={!formData.date || !formData.time}
-                className="flex-1 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
-              >
-                Continue
-              </button>
-            </div>
+        {loading ? (
+          <div className="space-y-4 px-1">
+            {[1, 2].map(i => (
+              <div key={i} className="h-32 bg-white animate-pulse rounded-2xl border border-slate-100"></div>
+            ))}
           </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">Ride Details</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Available Seats</label>
-                <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <Users className="text-slate-400 w-5 h-5" />
-                  <div className="flex items-center space-x-4">
-                    <button 
-                      onClick={() => setFormData({...formData, seats: Math.max(1, formData.seats - 1)})}
-                      className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600"
-                    >-</button>
-                    <span className="font-semibold text-lg">{formData.seats}</span>
-                    <button 
-                      onClick={() => setFormData({...formData, seats: Math.min(8, formData.seats + 1)})}
-                      className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600"
-                    >+</button>
+        ) : error ? (
+          <div className="text-center py-10 px-4 bg-white rounded-2xl border border-slate-100 shadow-sm mx-1">
+            <p className="text-rose-500 font-medium mb-4">{error}</p>
+            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg">Retry</button>
+          </div>
+        ) : activeRides.length === 0 ? (
+          <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-100 shadow-sm mx-1">
+            <Car className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-lg font-bold text-slate-800 mb-1">No {activeTab} rides</h3>
+            <p className="text-slate-500 text-sm">You don't have any {activeTab} rides to show.</p>
+          </div>
+        ) : (
+          <div className="space-y-4 px-1">
+            {activeRides.map(ride => (
+              <div key={ride.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      ride.status === 'SCHEDULED' || ride.status === 'PUBLISHED' ? 'bg-blue-50 text-blue-700' :
+                      ride.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' :
+                      ride.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' : 'bg-slate-50 text-slate-700'
+                    }`}>
+                      {ride.status}
+                    </span>
+                    <div className="text-xs text-slate-500 mt-2 font-medium flex items-center space-x-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{new Date(ride.departureTime).toLocaleDateString()} • {new Date(ride.departureTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-emerald-600 font-bold">{ride.availableSeats}</span>
+                    <span className="text-slate-500 text-xs ml-1">seats left</span>
                   </div>
                 </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Contribution per km (₹)</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <input 
-                    type="number" 
-                    value={formData.pricePerKm}
-                    onChange={(e) => setFormData({...formData, pricePerKm: e.target.value})}
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                    min="1"
-                  />
+                
+                <div className="space-y-1 mb-5">
+                  <div className="font-bold text-slate-800 text-sm truncate">{ride.originAddress}</div>
+                  <div className="text-slate-400 text-xs pl-1">↓</div>
+                  <div className="font-bold text-slate-800 text-sm truncate">{ride.destinationAddress}</div>
                 </div>
-                <p className="text-xs text-slate-500 mt-2">CoRide uses distance-based fair calculation. Passengers pay based on how far they travel with you.</p>
-              </div>
-            </div>
-            <div className="flex space-x-3">
-              <button 
-                onClick={() => setStep(2)}
-                className="w-1/3 bg-slate-100 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-200"
-              >
-                Back
-              </button>
-              <button 
-                onClick={() => setStep(4)}
-                className="flex-1 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700"
-              >
-                Review
-              </button>
-            </div>
-          </div>
-        )}
 
-        {step === 4 && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">Review & Publish</h3>
-            
-            <div className="bg-slate-50 p-4 rounded-xl space-y-3 text-sm text-slate-700">
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Route</span>
-                <span className="font-semibold text-right">{formData.origin} → {formData.destination}</span>
+                <div className="border-t border-slate-100 pt-4 flex justify-between items-center">
+                  <div className="text-xs font-semibold text-slate-500">
+                    {ride.vehicle?.make} {ride.vehicle?.model}
+                  </div>
+                  <button 
+                    onClick={() => navigate(`/offer/manage/${ride.id}`)}
+                    className="flex items-center space-x-1 text-sm font-bold text-emerald-600 hover:text-emerald-700 transition-colors bg-emerald-50 px-4 py-2 rounded-xl"
+                  >
+                    <span>Manage</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Departure</span>
-                <span className="font-semibold">{formData.date} at {formData.time}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Seats</span>
-                <span className="font-semibold">{formData.seats} available</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Pricing</span>
-                <span className="font-semibold">₹{formData.pricePerKm} / km</span>
-              </div>
-            </div>
-
-            <div className="flex space-x-3">
-              <button 
-                onClick={() => setStep(3)}
-                className="w-1/3 bg-slate-100 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-200"
-              >
-                Edit
-              </button>
-              <button 
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-50 shadow-md shadow-emerald-200"
-              >
-                {isSubmitting ? 'Publishing...' : 'Publish Ride'}
-              </button>
-            </div>
+            ))}
           </div>
         )}
       </div>

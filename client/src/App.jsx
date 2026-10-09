@@ -15,6 +15,8 @@ import RideDetails from './pages/find/RideDetails';
 
 // Offer Pages
 import OfferPoolPage from './pages/offer/OfferPoolPage';
+import CreateRidePage from './pages/offer/CreateRidePage';
+import ManageRidePage from './pages/offer/ManageRidePage';
 
 // Alerts
 import AlertsPage from './pages/alerts/AlertsPage';
@@ -43,6 +45,8 @@ export default function App() {
           <Route path="/rides/:rideId" element={<RideDetails />} />
           
           <Route path="/offer" element={<OfferPoolPage />} />
+          <Route path="/offer/create" element={<CreateRidePage />} />
+          <Route path="/offer/manage/:rideId" element={<ManageRidePage />} />
           
           <Route path="/alerts" element={<AlertsPage />} />
           

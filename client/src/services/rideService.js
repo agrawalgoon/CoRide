@@ -11,6 +11,11 @@ export const getRideById = async (rideId) => {
   return response.data;
 };
 
+export const getMyRides = async () => {
+  const response = await api.get('/rides/my');
+  return response.data;
+};
+
 export const createRide = async (rideData) => {
   const response = await api.post('/rides', rideData);
   return response.data;
