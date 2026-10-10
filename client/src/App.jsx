@@ -1,26 +1,57 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import AppLayout from './layouts/AppLayout';
-import FindPoolPage from './pages/FindPoolPage';
-import OfferPoolPage from './pages/OfferPoolPage';
-import MyRidesPage from './pages/MyRidesPage';
-import AlertsPage from './pages/AlertsPage';
-import ProfilePage from './pages/ProfilePage';
+import MainLayout from './layouts/MainLayout';
+import AuthLayout from './layouts/AuthLayout';
+
+// Auth Pages
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
+import VerifyOrganization from './pages/auth/VerifyOrganization';
+
+// Find Pages
+import FindPoolPage from './pages/find/FindPoolPage';
+import RideDetails from './pages/find/RideDetails';
+
+// Offer Pages
+import OfferPoolPage from './pages/offer/OfferPoolPage';
+
+// Alerts
+import AlertsPage from './pages/alerts/AlertsPage';
+
+// Profile Pages
+import ProfilePage from './pages/profile/ProfilePage';
+import VehiclesPage from './pages/profile/VehiclesPage';
+import RideHistoryPage from './pages/profile/RideHistoryPage';
 
 export default function App() {
   return (
     <BrowserRouter>
-      <AppLayout>
-        <Routes>
-          <Route path="/" element={<FindPoolPage />} />
-          <Route path="/find" element={<Navigate to="/" replace />} />
+      <Routes>
+        {/* Unauthenticated Routes */}
+        <Route element={<AuthLayout />}>
+          <Route path="/auth/login" element={<Login />} />
+          <Route path="/auth/register" element={<Register />} />
+          <Route path="/auth/verify-organization" element={<VerifyOrganization />} />
+        </Route>
+
+        {/* Protected Routes */}
+        <Route element={<MainLayout />}>
+          <Route path="/" element={<Navigate to="/find" replace />} />
+          <Route path="/find" element={<FindPoolPage />} />
+          <Route path="/rides/:rideId" element={<RideDetails />} />
+          
           <Route path="/offer" element={<OfferPoolPage />} />
-          <Route path="/my-rides" element={<MyRidesPage />} />
+          
           <Route path="/alerts" element={<AlertsPage />} />
+          
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AppLayout>
+          <Route path="/profile/vehicles" element={<VehiclesPage />} />
+          <Route path="/profile/history" element={<RideHistoryPage />} />
+        </Route>
+        
+        {/* Catch all */}
+        <Route path="*" element={<Navigate to="/find" replace />} />
+      </Routes>
     </BrowserRouter>
   );
 }
