@@ -6,35 +6,27 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      try {
-        const response = await api.get('/notifications');
-        setAlerts(response.data);
-      } catch (err) {
-        // Fallback mock data
-        setAlerts([
-          {
-            id: '1',
-            type: 'booking_confirmed',
-            title: 'Booking Confirmed!',
-            message: 'Your ride with John to Connaught Place is confirmed.',
-            time: '10 mins ago',
-            read: false,
-          },
-          {
-            id: '2',
-            type: 'reminder',
-            title: 'Upcoming Ride',
-            message: 'Your ride starts in 30 minutes. Be at the pickup point.',
-            time: '25 mins ago',
-            read: true,
-          }
-        ]);
-      } finally {
-        setLoading(false);
+  const fetchAlerts = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/notifications');
+      let data = response.data;
+      if (Array.isArray(data)) {
+        setAlerts(data);
+      } else if (data?.notifications && Array.isArray(data.notifications)) {
+        setAlerts(data.notifications);
+      } else {
+        setAlerts([]); // Graceful fallback if backend returns placeholder
       }
-    };
+    } catch (err) {
+      // Keep empty if API is missing or fails
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchAlerts();
   }, []);
 
@@ -50,7 +42,10 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6 pb-20">
       <div className="flex justify-between items-center px-2">
-        <h1 className="text-2xl font-bold text-slate-800">Alerts</h1>
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-slate-800">Alerts</h1>
+          <button onClick={fetchAlerts} className="text-sm font-medium text-slate-500 hover:text-emerald-600">Refresh</button>
+        </div>
         <button className="text-emerald-600 text-sm font-medium hover:underline">Mark all as read</button>
       </div>
 

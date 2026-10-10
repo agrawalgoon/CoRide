@@ -23,6 +23,9 @@ import ProfilePage from './pages/profile/ProfilePage';
 import VehiclesPage from './pages/profile/VehiclesPage';
 import RideHistoryPage from './pages/profile/RideHistoryPage';
 
+// Live Ride
+import LiveRidePage from './pages/live/LiveRidePage';
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -39,6 +42,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/find" replace />} />
           <Route path="/find" element={<FindPoolPage />} />
           <Route path="/rides/:rideId" element={<RideDetails />} />
+          <Route path="/rides/:rideId/live" element={<LiveRidePage />} />
           
           <Route path="/offer" element={<OfferPoolPage />} />
           

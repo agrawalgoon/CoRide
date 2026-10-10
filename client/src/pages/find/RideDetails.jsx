@@ -121,13 +121,22 @@ export default function RideDetails() {
           </div>
         </div>
 
-        <button 
-          onClick={handleBook}
-          disabled={bookingLoading}
-          className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200/50 disabled:opacity-50"
-        >
-          {bookingLoading ? 'Booking...' : 'Book Ride'}
-        </button>
+        <div className="space-y-3 mt-6">
+          <button 
+            onClick={handleBook}
+            disabled={bookingLoading}
+            className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200/50 disabled:opacity-50"
+          >
+            {bookingLoading ? 'Booking...' : 'Book Ride'}
+          </button>
+          
+          <button 
+            onClick={() => navigate(`/rides/${rideId}/live`)}
+            className="w-full bg-slate-100 text-emerald-700 font-bold py-4 rounded-xl hover:bg-slate-200 transition-colors"
+          >
+            View Live Ride
+          </button>
+        </div>
       </div>
     </div>
   );
