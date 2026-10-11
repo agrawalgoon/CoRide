@@ -5,12 +5,16 @@ import {
   getMyBookings,
   getBookingById,
   updateBookingStatus,
-  cancelBooking
+  cancelBooking,
+  getBookingQuote
 } from '../controllers/bookings.controller.js';
 
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 const router = Router();
+
+// Passenger: get fare quote before booking
+router.post('/quote', authenticateToken, getBookingQuote);
 
 // Passenger: create booking
 router.post('/', authenticateToken, createBooking);

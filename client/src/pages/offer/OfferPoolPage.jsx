@@ -1,29 +1,172 @@
-import React, { useState } from 'react';
-import { MapPin, Calendar, Users, Car, CheckCircle } from 'lucide-react';
-import api from '../../services/api';
+import React, { useState, useEffect } from 'react';
+import {
+  MapPin,
+  Calendar,
+  Clock,
+  Users,
+  Car,
+  CheckCircle,
+  AlertCircle,
+  Map,
+  Crosshair,
+  LoaderCircle
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { getVehicles } from '../../services/vehicleService';
+import { createRide } from '../../services/rideService';
+import LocationPickerModal from '../../components/map/LocationPickerModal';
 
 export default function OfferPoolPage() {
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    origin: '',
-    destination: '',
-    date: '',
-    time: '',
-    vehicleId: '',
-    seats: 3,
-    pricePerKm: 5,
+  const navigate = useNavigate();
+  const [step, setStep] = useState(1); // 1: Route, 2: Schedule & Vehicle, 3: Seats & Pricing, 4: Review
+
+  const [origin, setOrigin] = useState({
+    address: '',
+    latitude: null,
+    longitude: null
   });
+
+  const [destination, setDestination] = useState({
+    address: '',
+    latitude: null,
+    longitude: null
+  });
+
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState('');
+  const [seats, setSeats] = useState(3);
+  const [pricePerSeat, setPricePerSeat] = useState(50);
+  const [pricePerKm, setPricePerKm] = useState(5);
+
+  const [vehiclesLoading, setVehiclesLoading] = useState(true);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [createdRide, setCreatedRide] = useState(null);
+  const [error, setError] = useState('');
+
+  // Map modal states
+  const [mapModalOpen, setMapModalOpen] = useState(false);
+  const [mapTarget, setMapTarget] = useState('origin'); // 'origin' | 'destination'
+
+  useEffect(() => {
+    const fetchDriverVehicles = async () => {
+      try {
+        const data = await getVehicles();
+        const activeVehicles = Array.isArray(data) ? data.filter((v) => v.isActive) : [];
+        setVehicles(activeVehicles);
+        if (activeVehicles.length > 0) {
+          setSelectedVehicleId(activeVehicles[0].id);
+          setSeats(Math.max(1, activeVehicles[0].seatCapacity - 1));
+        }
+      } catch (err) {
+        console.error('Failed to load driver vehicles:', err);
+      } finally {
+        setVehiclesLoading(false);
+      }
+    };
+    fetchDriverVehicles();
+  }, []);
+
+  const openMapPicker = (target) => {
+    setMapTarget(target);
+    setError('');
+    setMapModalOpen(true);
+  };
+
+  const handleLocationConfirmed = (locData) => {
+    if (mapTarget === 'origin') {
+      setOrigin(locData);
+    } else {
+      setDestination(locData);
+    }
+  };
+
+  const useCurrentLocation = (target) => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setLocationLoading(true);
+    setError('');
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`
+          );
+          const data = await res.json();
+          const addr = data.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+          if (target === 'origin') {
+            setOrigin({ address: addr, latitude: lat, longitude: lon });
+          } else {
+            setDestination({ address: addr, latitude: lat, longitude: lon });
+          }
+        } catch {
+          const fallback = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+          if (target === 'origin') {
+            setOrigin({ address: fallback, latitude: lat, longitude: lon });
+          } else {
+            setDestination({ address: fallback, latitude: lat, longitude: lon });
+          }
+        } finally {
+          setLocationLoading(false);
+        }
+      },
+      (geoErr) => {
+        setLocationLoading(false);
+        setError('Unable to detect location. Please select manually on the map.');
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+    );
+  };
+
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
 
   const handleSubmit = async () => {
+    setError('');
+    if (!selectedVehicleId) {
+      setError('Please select a vehicle or add one first in Profile → My Vehicles.');
+      return;
+    }
+
+    const departure = new Date(`${date}T${time}`);
+    if (isNaN(departure.getTime()) || departure <= new Date()) {
+      setError('Departure date and time must be in the future.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await api.post('/rides', formData);
+      const payload = {
+        vehicleId: selectedVehicleId,
+        originAddress: origin.address,
+        originLatitude: Number(origin.latitude),
+        originLongitude: Number(origin.longitude),
+        destinationAddress: destination.address,
+        destinationLatitude: Number(destination.latitude),
+        destinationLongitude: Number(destination.longitude),
+        departureTime: departure.toISOString(),
+        totalSeats: Number(seats),
+        pricePerSeat: Number(pricePerSeat),
+        totalTripCost: Number(pricePerSeat) * Number(seats),
+        pricePerKm: Number(pricePerKm)
+      };
+
+      const result = await createRide(payload);
+      setCreatedRide(result);
       setIsSuccess(true);
-    } catch (error) {
-      // simulate success for MVP if API fails
-      setIsSuccess(true);
+    } catch (err) {
+      console.error('Ride publishing error:', err);
+      setError(
+        err.response?.data?.message ||
+        'Failed to offer ride. Please verify that your vehicle and route information are valid.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -31,209 +174,451 @@ export default function OfferPoolPage() {
 
   if (isSuccess) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+      <div className="max-w-xl mx-auto flex flex-col items-center justify-center py-16 text-center space-y-4 bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
         <CheckCircle className="w-20 h-20 text-emerald-500" />
         <h2 className="text-2xl font-bold text-slate-800">Ride Published!</h2>
-        <p className="text-slate-500">Your ride is now visible to other members.</p>
-        <button 
-          onClick={() => { setStep(1); setIsSuccess(false); }}
-          className="mt-6 px-6 py-2 bg-emerald-100 text-emerald-800 font-medium rounded-full hover:bg-emerald-200 transition-colors"
-        >
-          Offer Another Ride
-        </button>
+        <p className="text-slate-500 max-w-sm text-sm">
+          Your ride is now active in the system and eligible passengers can discover and book seats.
+        </p>
+        <div className="flex gap-3 mt-4">
+          <button
+            onClick={() => {
+              setStep(1);
+              setIsSuccess(false);
+              setCreatedRide(null);
+            }}
+            className="px-6 py-2.5 bg-emerald-100 text-emerald-800 font-bold rounded-2xl hover:bg-emerald-200 transition-colors text-sm"
+          >
+            Offer Another
+          </button>
+          <button
+            onClick={() => navigate('/profile/history')}
+            className="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 transition-colors text-sm shadow-md shadow-emerald-200"
+          >
+            View My Rides
+          </button>
+        </div>
       </div>
     );
   }
 
+  const minDate = new Date().toISOString().split('T')[0];
+
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">Offer a Ride</h1>
-        <p className="text-slate-500">Share your ride. Split the cost. Help your community move.</p>
+    <div className="max-w-xl mx-auto space-y-6 pb-20">
+      <div className="text-center mb-6">
+        <h1 className="text-2xl font-bold text-slate-800 mb-1">Offer a Carpool Ride</h1>
+        <p className="text-slate-500 text-sm">Share your ride, split trip costs, and commute together.</p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      {error && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-sm flex items-start space-x-2">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Stepper indicator */}
+      <div className="flex justify-between items-center px-4">
+        {[1, 2, 3, 4].map((s) => (
+          <div key={s} className="flex items-center">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                step >= s ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
+              }`}
+            >
+              {s}
+            </div>
+            {s < 4 && <div className={`w-12 sm:w-16 h-1 ${step > s ? 'bg-emerald-600' : 'bg-slate-200'}`} />}
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+        {/* STEP 1: ROUTE SELECTION WITH MAP */}
         {step === 1 && (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">Where are you going?</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Leaving from</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <MapPin className="text-emerald-500 w-5 h-5" />
-                  <input 
-                    type="text" 
-                    value={formData.origin}
-                    onChange={(e) => setFormData({...formData, origin: e.target.value})}
-                    placeholder="E.g. Home" 
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                  />
+            <h3 className="text-lg font-bold text-slate-800">Step 1: Set Your Route</h3>
+
+            {/* Origin Location */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <MapPin className="mt-1 h-5 w-5 shrink-0 text-emerald-600" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Leaving From (Pickup)</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800 break-words">
+                    {origin.address || 'Select departure point on map'}
+                  </p>
+                  {origin.latitude != null && (
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                      {origin.latitude.toFixed(5)}, {origin.longitude.toFixed(5)}
+                    </p>
+                  )}
                 </div>
               </div>
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Going to</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <MapPin className="text-rose-500 w-5 h-5" />
-                  <input 
-                    type="text" 
-                    value={formData.destination}
-                    onChange={(e) => setFormData({...formData, destination: e.target.value})}
-                    placeholder="E.g. Office / Campus" 
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                  />
-                </div>
+              <div className="flex flex-wrap gap-2 pt-1 pl-8">
+                <button
+                  type="button"
+                  onClick={() => useCurrentLocation('origin')}
+                  disabled={locationLoading}
+                  className="px-3 py-1.5 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <Crosshair className="w-3.5 h-3.5" />
+                  Use Current Location
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openMapPicker('origin')}
+                  className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <Map className="w-3.5 h-3.5 text-emerald-600" />
+                  Choose on Map (Draggable)
+                </button>
               </div>
             </div>
-            <button 
-              onClick={() => setStep(2)}
-              disabled={!formData.origin || !formData.destination}
-              className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+
+            {/* Destination Location */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <MapPin className="mt-1 h-5 w-5 shrink-0 text-rose-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Going To (Destination)</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800 break-words">
+                    {destination.address || 'Select destination point on map'}
+                  </p>
+                  {destination.latitude != null && (
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                      {destination.latitude.toFixed(5)}, {destination.longitude.toFixed(5)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1 pl-8">
+                <button
+                  type="button"
+                  onClick={() => openMapPicker('destination')}
+                  className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <Map className="w-3.5 h-3.5 text-rose-500" />
+                  Choose on Map (Draggable)
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (!origin.latitude || !destination.latitude) {
+                  setError('Please select both pickup and destination locations on the map.');
+                  return;
+                }
+                setError('');
+                setStep(2);
+              }}
+              disabled={!origin.latitude || !destination.latitude}
+              className="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-2xl hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-md shadow-emerald-200"
             >
-              Continue
+              Continue to Schedule →
             </button>
           </div>
         )}
 
+        {/* STEP 2: DATE, TIME & VEHICLE */}
         {step === 2 && (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">When are you leaving?</h3>
+            <h3 className="text-lg font-bold text-slate-800">Step 2: Schedule & Vehicle</h3>
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-slate-600 mb-1">Date</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <Calendar className="text-slate-400 w-5 h-5" />
-                  <input 
-                    type="date" 
-                    value={formData.date}
-                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Departure Date
+                </label>
+                <div className="flex items-center space-x-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <Calendar className="text-slate-400 w-5 h-5 shrink-0" />
+                  <input
+                    type="date"
+                    min={minDate}
+                    required
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="bg-transparent outline-none w-full text-slate-800 text-sm font-semibold"
                   />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm text-slate-600 mb-1">Time</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <input 
-                    type="time" 
-                    value={formData.time}
-                    onChange={(e) => setFormData({...formData, time: e.target.value})}
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Departure Time
+                </label>
+                <div className="flex items-center space-x-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <Clock className="text-slate-400 w-5 h-5 shrink-0" />
+                  <input
+                    type="time"
+                    required
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="bg-transparent outline-none w-full text-slate-800 text-sm font-semibold"
                   />
                 </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Vehicle
+                  </label>
+                  <Link to="/profile/vehicles" className="text-xs font-bold text-emerald-600 hover:underline">
+                    + Manage Vehicles
+                  </Link>
+                </div>
+
+                {vehiclesLoading ? (
+                  <p className="text-xs text-slate-400">Loading your vehicles...</p>
+                ) : vehicles.length === 0 ? (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs space-y-2">
+                    <p className="font-bold">No active vehicles found.</p>
+                    <p>You must register a vehicle before publishing a ride.</p>
+                    <Link
+                      to="/profile/vehicles"
+                      className="inline-block px-3 py-1.5 bg-amber-600 text-white rounded-xl font-bold"
+                    >
+                      Add Vehicle Now
+                    </Link>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedVehicleId}
+                    onChange={(e) => {
+                      setSelectedVehicleId(e.target.value);
+                      const veh = vehicles.find((v) => v.id === e.target.value);
+                      if (veh) setSeats(Math.max(1, veh.seatCapacity - 1));
+                    }}
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 outline-none focus:border-emerald-500"
+                  >
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.color} {v.make} {v.model} ({v.plateNumber}) • {v.seatCapacity} seats
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
-            <div className="flex space-x-3">
-              <button 
+
+            <div className="flex space-x-3 pt-2">
+              <button
+                type="button"
                 onClick={() => setStep(1)}
-                className="w-1/3 bg-slate-100 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-200"
+                className="w-1/3 py-3.5 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-200 text-sm"
               >
                 Back
               </button>
-              <button 
-                onClick={() => setStep(3)}
-                disabled={!formData.date || !formData.time}
-                className="flex-1 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+              <button
+                type="button"
+                onClick={() => {
+                  if (!date || !time) {
+                    setError('Please select departure date and time.');
+                    return;
+                  }
+                  if (!selectedVehicleId) {
+                    setError('Please register and select a vehicle.');
+                    return;
+                  }
+                  setError('');
+                  setStep(3);
+                }}
+                disabled={!date || !time || !selectedVehicleId}
+                className="flex-1 py-3.5 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 disabled:opacity-50 text-sm"
               >
-                Continue
+                Continue →
               </button>
             </div>
           </div>
         )}
 
+        {/* STEP 3: SEATS & PRICING */}
         {step === 3 && (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">Ride Details</h3>
+            <h3 className="text-lg font-bold text-slate-800">Step 3: Seats & Contribution</h3>
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-slate-600 mb-1">Available Seats</label>
-                <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <Users className="text-slate-400 w-5 h-5" />
-                  <div className="flex items-center space-x-4">
-                    <button 
-                      onClick={() => setFormData({...formData, seats: Math.max(1, formData.seats - 1)})}
-                      className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600"
-                    >-</button>
-                    <span className="font-semibold text-lg">{formData.seats}</span>
-                    <button 
-                      onClick={() => setFormData({...formData, seats: Math.min(8, formData.seats + 1)})}
-                      className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600"
-                    >+</button>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Available Passenger Seats
+                </label>
+                <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <div className="flex items-center space-x-3">
+                    <Users className="text-slate-400 w-5 h-5" />
+                    <span className="text-sm font-semibold text-slate-700">Passenger Seats</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setSeats((prev) => Math.max(1, prev - 1))}
+                      className="w-8 h-8 rounded-full bg-slate-200 font-bold text-slate-700 flex items-center justify-center hover:bg-slate-300"
+                    >
+                      -
+                    </button>
+                    <span className="font-bold text-lg text-slate-800">{seats}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSeats((prev) =>
+                          Math.min(selectedVehicle ? selectedVehicle.seatCapacity - 1 : 6, prev + 1)
+                        )
+                      }
+                      className="w-8 h-8 rounded-full bg-slate-200 font-bold text-slate-700 flex items-center justify-center hover:bg-slate-300"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
+                {selectedVehicle && (
+                  <p className="text-xs text-slate-400 mt-1 pl-1">
+                    Max capacity for {selectedVehicle.make} {selectedVehicle.model}: {selectedVehicle.seatCapacity - 1} passengers
+                  </p>
+                )}
               </div>
-              
+
               <div>
-                <label className="block text-sm text-slate-600 mb-1">Contribution per km (₹)</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500">
-                  <input 
-                    type="number" 
-                    value={formData.pricePerKm}
-                    onChange={(e) => setFormData({...formData, pricePerKm: e.target.value})}
-                    className="bg-transparent border-none outline-none w-full text-slate-800"
-                    min="1"
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Price per Seat (₹)
+                </label>
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center space-x-2">
+                  <span className="text-slate-500 font-bold">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    value={pricePerSeat}
+                    onChange={(e) => setPricePerSeat(Number(e.target.value))}
+                    className="bg-transparent outline-none w-full text-slate-800 font-bold text-base"
                   />
                 </div>
-                <p className="text-xs text-slate-500 mt-2">CoRide uses distance-based fair calculation. Passengers pay based on how far they travel with you.</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  Standard peer contribution to cover fuel and commute expenses.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Rate per Kilometre (₹/km)
+                </label>
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center space-x-2">
+                  <span className="text-slate-500 font-bold">₹</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="0.5"
+                    value={pricePerKm}
+                    onChange={(e) => setPricePerKm(Number(e.target.value))}
+                    className="bg-transparent outline-none w-full text-slate-800 font-bold text-base"
+                  />
+                  <span className="text-slate-400 text-sm whitespace-nowrap">/km</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-2">
+                  Passengers pay based on their individual travel distance at this rate.
+                </p>
               </div>
             </div>
-            <div className="flex space-x-3">
-              <button 
+
+            <div className="flex space-x-3 pt-2">
+              <button
+                type="button"
                 onClick={() => setStep(2)}
-                className="w-1/3 bg-slate-100 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-200"
+                className="w-1/3 py-3.5 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-200 text-sm"
               >
                 Back
               </button>
-              <button 
-                onClick={() => setStep(4)}
-                className="flex-1 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700"
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setStep(4);
+                }}
+                className="flex-1 py-3.5 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 text-sm"
               >
-                Review
+                Review Ride →
               </button>
             </div>
           </div>
         )}
 
+        {/* STEP 4: REVIEW & PUBLISH */}
         {step === 4 && (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-slate-800">Review & Publish</h3>
-            
-            <div className="bg-slate-50 p-4 rounded-xl space-y-3 text-sm text-slate-700">
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Route</span>
-                <span className="font-semibold text-right">{formData.origin} → {formData.destination}</span>
+            <h3 className="text-lg font-bold text-slate-800">Step 4: Review & Publish</h3>
+
+            <div className="bg-slate-50 p-5 rounded-2xl space-y-4 text-sm border border-slate-200">
+              <div className="border-b border-slate-200 pb-3">
+                <span className="text-xs uppercase font-bold text-slate-400 block mb-1">Route</span>
+                <p className="font-semibold text-slate-800">{origin.address}</p>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  ({origin.latitude?.toFixed(4)}, {origin.longitude?.toFixed(4)})
+                </p>
+                <p className="text-xs text-slate-500 mt-1">↓ To</p>
+                <p className="font-semibold text-slate-800 mt-1">{destination.address}</p>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  ({destination.latitude?.toFixed(4)}, {destination.longitude?.toFixed(4)})
+                </p>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Departure</span>
-                <span className="font-semibold">{formData.date} at {formData.time}</span>
+
+              <div className="grid grid-cols-2 gap-3 border-b border-slate-200 pb-3">
+                <div>
+                  <span className="text-xs uppercase font-bold text-slate-400 block mb-0.5">Departure</span>
+                  <span className="font-semibold text-slate-800">{date} at {time}</span>
+                </div>
+                <div>
+                  <span className="text-xs uppercase font-bold text-slate-400 block mb-0.5">Seats Offered</span>
+                  <span className="font-semibold text-slate-800">{seats} seats</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Seats</span>
-                <span className="font-semibold">{formData.seats} available</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-slate-500">Pricing</span>
-                <span className="font-semibold">₹{formData.pricePerKm} / km</span>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-xs uppercase font-bold text-slate-400 block mb-0.5">Vehicle</span>
+                  <span className="font-semibold text-slate-800">
+                    {selectedVehicle?.color} {selectedVehicle?.make} ({selectedVehicle?.plateNumber})
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs uppercase font-bold text-slate-400 block mb-0.5">Fare per Seat</span>
+                  <span className="font-bold text-emerald-600 text-base">₹{pricePerSeat}</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex space-x-3">
-              <button 
+            <div className="flex space-x-3 pt-2">
+              <button
+                type="button"
                 onClick={() => setStep(3)}
-                className="w-1/3 bg-slate-100 text-slate-700 font-semibold py-3 rounded-xl hover:bg-slate-200"
+                className="w-1/3 py-3.5 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-200 text-sm"
               >
-                Edit
+                Back
               </button>
-              <button 
+              <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-50 shadow-md shadow-emerald-200"
+                className="flex-1 py-3.5 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 disabled:opacity-50 shadow-lg shadow-emerald-200/50 text-sm"
               >
-                {isSubmitting ? 'Publishing...' : 'Publish Ride'}
+                {isSubmitting ? 'Publishing Ride...' : 'Publish Ride'}
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* No-Paid-API Draggable Map Location Picker Modal */}
+      <LocationPickerModal
+        isOpen={mapModalOpen}
+        onClose={() => setMapModalOpen(false)}
+        onConfirm={handleLocationConfirmed}
+        title={mapTarget === 'origin' ? 'Choose Departure / Pickup Point' : 'Choose Destination Point'}
+        label={mapTarget === 'origin' ? 'Pickup' : 'Destination'}
+        markerColor={mapTarget === 'origin' ? '#059669' : '#f43f5e'}
+        initialLocation={mapTarget === 'origin' ? origin : destination}
+      />
     </div>
   );
 }

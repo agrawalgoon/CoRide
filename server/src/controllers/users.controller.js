@@ -187,6 +187,53 @@ export const requestOrganizationOtp = async (req, res, next) => {
 
     const now = new Date();
 
+    // 1. Resend cooldown enforcement (60 seconds)
+    const RESEND_COOLDOWN_SECONDS = 60;
+    const recentOtp = await prisma.emailVerificationOtp.findFirst({
+      where: {
+        userId: user.id
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    if (recentOtp) {
+      const elapsedSeconds = Math.floor((now.getTime() - new Date(recentOtp.createdAt).getTime()) / 1000);
+      if (elapsedSeconds < RESEND_COOLDOWN_SECONDS) {
+        const waitSeconds = RESEND_COOLDOWN_SECONDS - elapsedSeconds;
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${waitSeconds} seconds before requesting a new verification code`,
+          error: {
+            message: `Please wait ${waitSeconds} seconds before requesting a new verification code`,
+            code: 'RESEND_COOLDOWN',
+            retryAfterSeconds: waitSeconds
+          }
+        });
+      }
+    }
+
+    // 2. Hourly rate limit check (max 5 OTP requests in 1 hour)
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const hourlyRequestCount = await prisma.emailVerificationOtp.count({
+      where: {
+        userId: user.id,
+        createdAt: { gte: oneHourAgo }
+      }
+    });
+
+    if (hourlyRequestCount >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many verification code requests. Please try again after an hour.',
+        error: {
+          message: 'Too many verification code requests. Please try again after an hour.',
+          code: 'RATE_LIMIT_EXCEEDED'
+        }
+      });
+    }
+
     // Invalidate any previously active/unverified OTPs for this user
     await prisma.emailVerificationOtp.updateMany({
       where: {
@@ -207,8 +254,10 @@ export const requestOrganizationOtp = async (req, res, next) => {
     const otpHash = await bcrypt.hash(otp, salt);
 
     // OTP expires after 10 minutes
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresInMinutes = 10;
+    const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
 
+    // Persist OTP record in database
     await prisma.emailVerificationOtp.create({
       data: {
         userId: user.id,
@@ -219,17 +268,40 @@ export const requestOrganizationOtp = async (req, res, next) => {
     });
 
     // Send the OTP via email service
-    await sendVerificationOtpEmail({
-      to: user.orgEmail,
-      userName: user.name,
-      otp,
-      expiresInMinutes: 10
-    });
+    try {
+      await sendVerificationOtpEmail({
+        to: user.orgEmail,
+        userName: user.name,
+        otp,
+        expiresInMinutes
+      });
+    } catch (emailError) {
+      // Invalidate the generated OTP if email delivery failed so it cannot be used
+      await prisma.emailVerificationOtp.updateMany({
+        where: {
+          userId: user.id,
+          expiresAt: { gt: now },
+          verifiedAt: null
+        },
+        data: { expiresAt: now }
+      });
+
+      console.error('[EmailService] Failed to deliver OTP email:', emailError.message);
+
+      return res.status(emailError.statusCode || 502).json({
+        success: false,
+        message: 'Failed to deliver verification code. Please verify your email address or try again later.',
+        error: {
+          message: 'Failed to deliver verification code to the specified email address.',
+          code: emailError.code || 'EMAIL_DELIVERY_FAILED'
+        }
+      });
+    }
 
     const responsePayload = {
       success: true,
       message: `Verification OTP sent to ${user.orgEmail}`,
-      expiresInMinutes: 10
+      expiresInMinutes
     };
 
     // Development only: expose devOtp for rapid automated testing

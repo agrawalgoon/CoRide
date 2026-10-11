@@ -220,8 +220,10 @@ model Ride {
 availableSeats        Int
 pricePerSeat          Float      @default(0.00)
 totalTripCost         Float      @default(0.00)
+pricePerKm            Float      @default(5.00)
   isRecurring          Boolean    @default(false)
   recurringDays        Json?      // E.g. ["MON", "TUE", "WED", "THU", "FRI"]
+  recurringParentId    String?    // Groups recurring series instances together
   ladiesOnly           Boolean    @default(false)
   luggageAllowed       Boolean    @default(true)
   status               RideStatus @default(SCHEDULED)
@@ -239,6 +241,7 @@ totalTripCost         Float      @default(0.00)
 
   @@index([driverId])
   @@index([vehicleId])
+  @@index([recurringParentId])
   @@index([departureTime, status, availableSeats])
   @@index([originLatitude, originLongitude])
   @@index([destinationLatitude, destinationLongitude])
@@ -255,6 +258,7 @@ model Booking {
   passengerId             String
   seatsBooked             Int               @default(1)
   fareContributionTotal   Float
+  distanceKm              Float?
   pickupAddress           String            @db.VarChar(500)
   pickupLatitude          Float
   pickupLongitude         Float

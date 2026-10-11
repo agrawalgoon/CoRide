@@ -19,8 +19,7 @@ export default function BottomNav() {
     {
       to: '/alerts',
       label: 'Alerts',
-      icon: Bell,
-      badge: 3
+      icon: Bell
     },
     {
       to: '/profile',

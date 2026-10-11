@@ -1,4 +1,5 @@
 import { prisma } from '../config/db.js';
+import { validateRouteCompatibility, calculatePassengerFare } from '../services/routing/routing.service.js';
 
 // --------------------------------------------------
 // Distance calculation using Haversine formula
@@ -43,6 +44,7 @@ const bookingSelect = {
   passengerId: true,
   seatsBooked: true,
   fareContributionTotal: true,
+  distanceKm: true,
   pickupAddress: true,
   pickupLatitude: true,
   pickupLongitude: true,
@@ -127,6 +129,7 @@ export const createBooking = async (req, res, next) => {
           availableSeats: true,
           pricePerSeat: true,
           totalTripCost: true,
+          pricePerKm: true,
           originLatitude: true,
           originLongitude: true,
           destinationLatitude: true,
@@ -209,85 +212,38 @@ export const createBooking = async (req, res, next) => {
       }
 
       // --------------------------------------------
-      // Passenger distance
+      // Route compatibility validation
       // --------------------------------------------
 
-      const passengerDistanceKm =
-        calculateDistanceKm(
-          pickupLatitude,
-          pickupLongitude,
-          dropLatitude,
-          dropLongitude
-        );
+      const pickupLat = Number(pickupLatitude);
+      const pickupLon = Number(pickupLongitude);
+      const dropLat = Number(dropLatitude);
+      const dropLon = Number(dropLongitude);
 
-      if (!Number.isFinite(passengerDistanceKm) || passengerDistanceKm <= 0) {
-        const error = new Error(
-          'Pickup and drop locations must be different'
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
-
-      // --------------------------------------------
-      // Full ride distance
-      // --------------------------------------------
-
-      const rideDistanceKm =
-        calculateDistanceKm(
-          ride.originLatitude,
-          ride.originLongitude,
-          ride.destinationLatitude,
-          ride.destinationLongitude
-        );
-
-      if (!Number.isFinite(rideDistanceKm) || rideDistanceKm <= 0) {
-        const error = new Error(
-          'Ride route distance could not be calculated'
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
-
-      // --------------------------------------------
-      // Total trip cost
-      // --------------------------------------------
-
-      const totalTripCost =
-        Number(ride.totalTripCost);
-
-      if (
-        !Number.isFinite(totalTripCost) ||
-        totalTripCost <= 0
-      ) {
-        const error = new Error(
-          'This ride does not have a valid total trip cost'
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
-
-      // --------------------------------------------
-      // Fair distance-based fare
-      //
-      // Passenger pays according to the portion
-      // of the driver's route they actually travel.
-      // --------------------------------------------
-
-      const distanceRatio = Math.min(
-        passengerDistanceKm / rideDistanceKm,
-        1
+      const routeCheck = validateRouteCompatibility(
+        ride, pickupLat, pickupLon, dropLat, dropLon
       );
 
-      const fare =
-        totalTripCost *
-        distanceRatio *
-        requestedSeats;
+      if (!routeCheck.valid) {
+        const error = new Error(routeCheck.reason);
+        error.statusCode = 400;
+        throw error;
+      }
 
-      const roundedFare =
-        Number(fare.toFixed(2));
+      // --------------------------------------------
+      // Distance-based fare calculation
+      // Uses OSRM driving distance, fallback to
+      // haversine × 1.3 winding factor.
+      // Formula: max(₹10, distance × pricePerKm) × seats
+      // Capped at totalTripCost per seat.
+      // --------------------------------------------
+
+      const fareResult = await calculatePassengerFare(
+        ride, pickupLat, pickupLon, dropLat, dropLon, requestedSeats
+      );
+
+      const roundedFare = fareResult.fare;
+      const passengerDistanceKm = fareResult.distanceKm;
 
       // --------------------------------------------
       // Create booking
@@ -302,6 +258,8 @@ export const createBooking = async (req, res, next) => {
 
             fareContributionTotal:
               roundedFare,
+
+            distanceKm: passengerDistanceKm,
 
             pickupAddress:
               pickupAddress.trim(),
@@ -417,6 +375,7 @@ export const getMyBookings = async (
               status: true,
               pricePerSeat: true,
               totalTripCost: true,
+              pricePerKm: true,
 
               driver: {
                 select: {
@@ -486,6 +445,7 @@ export const getBookingById = async (
               availableSeats: true,
               pricePerSeat: true,
               totalTripCost: true,
+              pricePerKm: true,
               status: true,
 
               driver: {
@@ -787,6 +747,112 @@ export const cancelBooking = async (
       message:
         'Booking cancelled successfully',
       booking: cancelledBooking
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// --------------------------------------------------
+// GET BOOKING QUOTE
+// POST /api/bookings/quote
+// --------------------------------------------------
+
+export const getBookingQuote = async (req, res, next) => {
+  try {
+    const {
+      rideId,
+      seatsBooked = 1,
+      pickupLatitude,
+      pickupLongitude,
+      dropLatitude,
+      dropLongitude
+    } = req.body;
+
+    if (
+      !rideId ||
+      pickupLatitude === undefined ||
+      pickupLongitude === undefined ||
+      dropLatitude === undefined ||
+      dropLongitude === undefined
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'rideId, pickup and drop coordinates are required'
+      });
+    }
+
+    const requestedSeats = Number(seatsBooked);
+    if (!Number.isInteger(requestedSeats) || requestedSeats < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'seatsBooked must be a positive integer'
+      });
+    }
+
+    const ride = await prisma.ride.findUnique({
+      where: { id: rideId },
+      select: {
+        id: true,
+        availableSeats: true,
+        pricePerSeat: true,
+        totalTripCost: true,
+        pricePerKm: true,
+        originLatitude: true,
+        originLongitude: true,
+        destinationLatitude: true,
+        destinationLongitude: true,
+        status: true
+      }
+    });
+
+    if (!ride) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ride not found'
+      });
+    }
+
+    if (ride.status !== 'SCHEDULED') {
+      return res.status(400).json({
+        success: false,
+        message: 'This ride is not available for booking'
+      });
+    }
+
+    if (ride.availableSeats < requestedSeats) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${ride.availableSeats} seat(s) available`
+      });
+    }
+
+    const pickupLat = Number(pickupLatitude);
+    const pickupLon = Number(pickupLongitude);
+    const dropLat = Number(dropLatitude);
+    const dropLon = Number(dropLongitude);
+
+    // Validate route compatibility
+    const routeCheck = validateRouteCompatibility(
+      ride, pickupLat, pickupLon, dropLat, dropLon
+    );
+
+    if (!routeCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: routeCheck.reason
+      });
+    }
+
+    // Calculate fare
+    const quote = await calculatePassengerFare(
+      ride, pickupLat, pickupLon, dropLat, dropLon, requestedSeats
+    );
+
+    return res.status(200).json({
+      success: true,
+      quote
     });
 
   } catch (error) {
