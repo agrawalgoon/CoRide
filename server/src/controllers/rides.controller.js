@@ -571,6 +571,65 @@ export const deleteRide = async (req, res, next) => {
   }
 };
 
+export const startRide = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const ride = await prisma.ride.findUnique({
+      where: { id }
+    });
+
+    if (!ride) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ride not found'
+      });
+    }
+
+    if (ride.driverId !== req.user.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only start your own rides'
+      });
+    }
+
+    if (ride.status === 'ACTIVE') {
+      return res.status(200).json({
+        success: true,
+        message: 'Ride is already active',
+        ride
+      });
+    }
+
+    if (ride.status !== 'SCHEDULED') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot start a ride with status '${ride.status}'. Only scheduled rides can be started.`
+      });
+    }
+
+    const secret = ride.activeTotpSecret || crypto.randomBytes(16).toString('hex');
+
+    const updatedRide = await prisma.ride.update({
+      where: { id },
+      data: {
+        status: 'ACTIVE',
+        activeTotpSecret: secret
+      },
+      select: rideSelect
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Ride started successfully',
+      ride: updatedRide
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export const getMatches = async (req, res, next) => {
   try {
     const {

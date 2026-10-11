@@ -7,6 +7,7 @@ import {
   getRideById,
   updateRide,
   deleteRide,
+  startRide,
   getMatches,
   cancelRecurringSeries,
   syncRecurringRides
@@ -36,6 +37,9 @@ router.post('/', authenticateToken, createRide);
 
 // Public: get ride details
 router.get('/:id', getRideById);
+
+// Protected: start eligible ride
+router.post('/:id/start', authenticateToken, startRide);
 
 // Protected: update own ride
 router.put('/:id', authenticateToken, updateRide);
