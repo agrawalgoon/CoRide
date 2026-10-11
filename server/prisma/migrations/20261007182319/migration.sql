@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `rides` ADD COLUMN `totalTripCost` DOUBLE NOT NULL DEFAULT 0.00;

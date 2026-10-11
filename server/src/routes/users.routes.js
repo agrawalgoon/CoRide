@@ -12,7 +12,40 @@ import {
   verifyOtpSchema
 } from '../validators/user.validator.js';
 
+import rateLimit from 'express-rate-limit';
+
 const router = Router();
+
+// Strict rate limiters for OTP security
+const otpRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many OTP requests from this network. Please try again later.',
+    error: {
+      message: 'Too many OTP requests from this network. Please try again later.',
+      code: 'RATE_LIMIT_EXCEEDED'
+    }
+  }
+});
+
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many OTP verification attempts. Please wait before trying again.',
+    error: {
+      message: 'Too many OTP verification attempts. Please wait before trying again.',
+      code: 'RATE_LIMIT_EXCEEDED'
+    }
+  }
+});
 
 // Protected profile route: GET /api/users/me
 router.get('/me', authenticateToken, getMe);
@@ -24,6 +57,7 @@ router.post('/organization', authenticateToken, linkOrganization);
 router.post(
   '/organization/request-otp',
   authenticateToken,
+  otpRequestLimiter,
   validate(requestOtpSchema),
   requestOrganizationOtp
 );
@@ -32,6 +66,7 @@ router.post(
 router.post(
   '/organization/verify-otp',
   authenticateToken,
+  otpVerifyLimiter,
   validate(verifyOtpSchema),
   verifyOrganizationOtp
 );

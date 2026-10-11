@@ -7,36 +7,62 @@ import { useAuth } from '../../hooks/useAuth';
 export default function VerifyOrganization() {
   const { isAuthenticated, loading, user, refreshUser } = useAuth();
   const navigate = useNavigate();
-  
+
   const [organizations, setOrganizations] = useState([]);
   const [selectedOrgId, setSelectedOrgId] = useState('');
   const [orgEmail, setOrgEmail] = useState('');
-  
+
   const [step, setStep] = useState(1); // 1: Org & Email, 2: Enter OTP, 3: Success
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const otpRefs = useRef([]);
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const [countdown, setCountdown] = useState(0);
   const [devOtp, setDevOtp] = useState('');
 
   // Fetch organizations
-  useEffect(() => {
-    const fetchOrgs = async () => {
-      try {
-        const data = await getOrganizations();
-        const orgs = Array.isArray(data) ? data : (data.data || []);
-        setOrganizations(orgs);
-      } catch (err) {
-        console.error('Failed to load organizations', err);
+
+useEffect(() => {
+  const fetchOrgs = async () => {
+    try {
+      const response = await getOrganizations();
+
+      const orgs = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.organizations)
+            ? response.organizations
+            : Array.isArray(response?.data?.organizations)
+              ? response.data.organizations
+              : [];
+
+      setOrganizations(orgs);
+
+      if (orgs.length === 0) {
+        setError('No organizations are available. Please try again later.');
+      } else {
+        setError('');
       }
-    };
-    if (isAuthenticated) {
-      fetchOrgs();
+    } catch (err) {
+      console.error(
+        'Failed to load organizations:',
+        err.response?.data || err.message
+      );
+      setOrganizations([]);
+      setError(
+        err.response?.data?.message ||
+        'Unable to load organizations. Please refresh and try again.'
+      );
     }
-  }, [isAuthenticated]);
+  };
+
+  if (isAuthenticated) {
+    fetchOrgs();
+  }
+}, [isAuthenticated]);
 
   // Countdown timer for resend
   useEffect(() => {
@@ -62,22 +88,22 @@ export default function VerifyOrganization() {
       setError('Please select an organization and enter your organization email.');
       return;
     }
-    
+
     setIsLoading(true);
     setError('');
     setDevOtp('');
-    
+
     try {
       // 1. Link organization
       await linkOrganization(selectedOrgId, orgEmail);
-      
+
       // 2. Automatically request OTP
       const otpResponse = await requestOrganizationOtp();
-      
+
       if (otpResponse.devOtp) {
         setDevOtp(otpResponse.devOtp);
       }
-      
+
       setStep(2);
       setCountdown(60);
       setOtp(['', '', '', '', '', '']);
@@ -108,11 +134,11 @@ export default function VerifyOrganization() {
 
   const handleOtpChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
-    
+
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
-    
+
     if (value && index < 5) {
       otpRefs.current[index + 1].focus();
     }
@@ -131,7 +157,7 @@ export default function VerifyOrganization() {
       setError('Please enter a valid 6-digit OTP');
       return;
     }
-    
+
     setIsLoading(true);
     setError('');
     try {

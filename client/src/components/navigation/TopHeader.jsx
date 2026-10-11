@@ -27,7 +27,7 @@ export default function TopHeader() {
   ];
 
   const displayName = user?.name || 'User';
-  const orgName = user?.organization || 'Organization';
+  const orgName = user?.orgEmail ? user.orgEmail.split('@')[1] : 'CoRide Community';
   const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
   return (
