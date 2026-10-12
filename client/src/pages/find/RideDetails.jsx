@@ -9,6 +9,7 @@ import { createBooking, getBookingQuote, updateBookingStatus } from '../../servi
 import { useAuth } from '../../hooks/useAuth';
 import LocationPickerModal from '../../components/map/LocationPickerModal';
 import RouteMap from '../../components/map/RouteMap';
+import { getRideFairCostSharing } from '../../services/routingService';
 
 export default function RideDetails() {
   const { rideId } = useParams();
@@ -33,6 +34,8 @@ export default function RideDetails() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
   const [updatingBookingId, setUpdatingBookingId] = useState(null);
+  const [fairPricing, setFairPricing] = useState(null);
+  const [fairPricingLoading, setFairPricingLoading] = useState(false);
 
   const handleUpdateBooking = async (bookingId, newStatus) => {
     setUpdatingBookingId(bookingId);
@@ -72,6 +75,17 @@ export default function RideDetails() {
             latitude: Number(data.destinationLatitude),
             longitude: Number(data.destinationLongitude)
           });
+
+          // Fetch segment fair cost breakdown if available
+          try {
+            setFairPricingLoading(true);
+            const breakdown = await getRideFairCostSharing(rideId);
+            setFairPricing(breakdown);
+          } catch {
+            setFairPricing(null);
+          } finally {
+            setFairPricingLoading(false);
+          }
         }
       } catch (err) {
         console.error('Failed to load ride:', err);
@@ -356,18 +370,66 @@ export default function RideDetails() {
 
             {/* Quote Result */}
             {quote && (
-              <div className="pt-2 mt-2 border-t border-emerald-200 space-y-1">
-                <div className="flex justify-between text-xs text-emerald-700">
-                  <span>Your travel distance</span>
-                  <span>{quote.distanceKm} km ({quote.distanceSource === 'osrm' ? 'road distance' : 'estimated'})</span>
+              <div className="pt-2 mt-2 border-t border-emerald-200 space-y-1.5">
+                <div className="flex justify-between text-xs text-emerald-800 font-medium">
+                  <span>Actual Driving Road Distance:</span>
+                  <span className="font-bold">{quote.distanceKm} km</span>
                 </div>
-                <div className="flex justify-between text-xs text-emerald-700">
-                  <span>Per-seat fare</span>
-                  <span>₹{quote.perSeatFare}{quote.minFareApplied ? ' (min fare applied)' : ''}</span>
+                <div className="flex justify-between text-[11px] text-emerald-700">
+                  <span>Routing Provider:</span>
+                  <span className="font-semibold uppercase tracking-wider">
+                    {quote.distanceSource === 'google_routes' ? 'Google Maps Routes API' : quote.distanceSource === 'openrouteservice' ? 'OpenRouteService' : 'OSRM Road Network'}
+                  </span>
                 </div>
-                <div className="flex justify-between font-bold text-lg pt-1">
-                  <span>Your Estimated Fare</span>
-                  <span>₹{quote.fare}</span>
+                {quote.durationMinutes && (
+                  <div className="flex justify-between text-[11px] text-emerald-700">
+                    <span>Estimated Drive Duration:</span>
+                    <span>{quote.durationMinutes} mins</span>
+                  </div>
+                )}
+                {quote.fuelEstimate && (
+                  <div className="flex justify-between text-[11px] text-emerald-700">
+                    <span>Est. Fuel Required:</span>
+                    <span>{quote.fuelEstimate.fuelRequiredLitres} L (~₹{quote.fuelEstimate.estimatedFuelCost})</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs text-emerald-700 pt-1 border-t border-emerald-200/60">
+                  <span>Per-seat Rate ({ride.pricePerKm || 5}₹/km):</span>
+                  <span>₹{quote.perSeatFare}{quote.minFareApplied ? ' (min fare ₹10 applied)' : ''}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg pt-1 text-slate-900">
+                  <span>Your Total Contribution ({seatsBooked} seat{seatsBooked > 1 ? 's' : ''}):</span>
+                  <span className="text-emerald-800 font-extrabold">₹{quote.fare}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Fair Segment Cost Sharing Breakdown (Section 5) */}
+            {fairPricing && fairPricing.legs && fairPricing.legs.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-emerald-200 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+                  <span>Route Leg Cost Sharing Breakdown</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                    {fairPricing.legs.length} Legs
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {fairPricing.legs.map((leg, i) => (
+                    <div key={i} className="p-2 bg-white/80 rounded-xl border border-emerald-100 text-[11px] space-y-0.5">
+                      <div className="flex justify-between font-semibold text-slate-700">
+                        <span>Leg {i + 1}: {leg.legDistanceKm} km</span>
+                        <span className="text-emerald-800 font-bold">₹{leg.legEstimatedFuelCost} fuel</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-[10px]">
+                        <span>Participants: {leg.totalUnits} ({leg.activePassengerIds.length} passenger{leg.activePassengerIds.length === 1 ? '' : 's'})</span>
+                        <span>Cost/share: ₹{leg.costPerUnit}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between text-xs font-bold text-slate-800 pt-1">
+                  <span>Total Trip Fuel:</span>
+                  <span>₹{fairPricing.totalTripFuelCost} ({fairPricing.totalTripRoadDistanceKm} km)</span>
                 </div>
               </div>
             )}

@@ -945,6 +945,17 @@ export default function FindPoolPage() {
                       </div>
                     )}
 
+                    {/* Driving Road Distance / Details */}
+                    {item.details && (
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-1">
+                        <span>Pickup detour: <strong>{item.details.pickupDistanceKm} km</strong></span>
+                        <span>•</span>
+                        <span>Dropoff detour: <strong>{item.details.dropDistanceKm} km</strong></span>
+                        <span>•</span>
+                        <span>Time diff: <strong>{item.details.departureDifferenceMinutes} mins</strong></span>
+                      </div>
+                    )}
+
                     {/* Bottom Action Row */}
                     <div className="flex items-center justify-between border-t border-slate-100 pt-3.5 text-xs">
                       <span className="font-semibold text-slate-500">

@@ -8,6 +8,7 @@ import { createRide, updateRide, getRideById } from '../../services/rideService'
 import { getVehicles } from '../../services/vehicleService';
 import LocationPickerModal from '../../components/map/LocationPickerModal';
 import ActiveCommutesPanel from '../../components/ride/ActiveCommutesPanel';
+import { getAuthoritativeRoadRoute } from '../../services/routingService';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,6 +40,12 @@ export default function OfferPoolPage() {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
+
+  // Authoritative Road Route & Fuel Calculation State
+  const [roadRoute, setRoadRoute] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [vehicleMileage, setVehicleMileage] = useState(15);
+  const [fuelPrice, setFuelPrice] = useState(105);
 
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -80,6 +87,37 @@ export default function OfferPoolPage() {
       loadRideForEdit(editParamId);
     }
   }, [editParamId]);
+
+  // Recalculate authoritative road route and fuel estimation whenever origin or destination changes
+  useEffect(() => {
+    const fetchRoute = async () => {
+      if (
+        origin.latitude != null &&
+        origin.longitude != null &&
+        destination.latitude != null &&
+        destination.longitude != null
+      ) {
+        setRouteLoading(true);
+        try {
+          const res = await getAuthoritativeRoadRoute({
+            origin,
+            destination,
+            mileageKmPerLitre: vehicleMileage,
+            fuelPricePerLitre: fuelPrice
+          });
+          setRoadRoute(res);
+        } catch (err) {
+          console.error('Road route calculation failed:', err);
+          setRoadRoute(null);
+        } finally {
+          setRouteLoading(false);
+        }
+      } else {
+        setRoadRoute(null);
+      }
+    };
+    fetchRoute();
+  }, [origin.latitude, origin.longitude, destination.latitude, destination.longitude, vehicleMileage, fuelPrice]);
 
   const loadRideForEdit = async (rideId) => {
     try {
@@ -418,6 +456,51 @@ export default function OfferPoolPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Road Route & Trip Cost Calculation Card */}
+                  {routeLoading && (
+                    <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-2xl flex items-center gap-2 text-xs text-emerald-800">
+                      <LoaderCircle size={14} className="animate-spin text-emerald-700" />
+                      <span>Computing driving road distance via authoritative routing API...</span>
+                    </div>
+                  )}
+
+                  {roadRoute && !routeLoading && (
+                    <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                          <Car size={14} className="text-emerald-700" />
+                          Actual Driving Route
+                        </span>
+                        <span className="text-[10px] uppercase font-extrabold tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          {roadRoute.provider === 'google_routes' ? 'Google Maps Routes API' : roadRoute.provider === 'openrouteservice' ? 'OpenRouteService' : 'OSRM Network'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 border-t border-emerald-200/50">
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase">Road Distance</p>
+                          <p className="font-extrabold text-slate-800">{roadRoute.distanceKm} km</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase">Est. Duration</p>
+                          <p className="font-extrabold text-slate-800">{roadRoute.durationMinutes} mins</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase">Est. Fuel Required</p>
+                          <p className="font-extrabold text-slate-800">
+                            {roadRoute.fuelEstimate?.fuelRequiredLitres || (roadRoute.distanceKm / vehicleMileage).toFixed(2)} L
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase">Est. Total Fuel Cost</p>
+                          <p className="font-extrabold text-emerald-800">
+                            ₹{roadRoute.fuelEstimate?.estimatedFuelCost || ((roadRoute.distanceKm / vehicleMileage) * fuelPrice).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── SCHEDULE & RECURRENCE ─────────────────────────── */}

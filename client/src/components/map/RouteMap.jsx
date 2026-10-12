@@ -10,6 +10,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, Users } from 'lucide-react';
+import { decodePolyline } from '../../services/routingService';
 
 // Create custom colored Leaflet marker icons with clean SVG pins
 const createCustomMarkerIcon = (color = '#059669', label = '') =>
@@ -62,8 +63,10 @@ export default function RouteMap({
   origin,
   destination,
   bookings = [],
+  polyline = null,
   className = 'h-72'
 }) {
+  const encodedPolylinePoints = polyline ? decodePolyline(polyline) : null;
   const oLat = Number(origin?.latitude);
   const oLon = Number(origin?.longitude);
   const dLat = Number(destination?.latitude);
@@ -111,8 +114,15 @@ export default function RouteMap({
 
           <FitBounds coordinates={allCoordinates} />
 
-          {/* Polyline connecting the route */}
-          {allCoordinates.length > 1 && (
+          {/* Road Polyline connecting the route geometry */}
+          {encodedPolylinePoints && encodedPolylinePoints.length > 1 ? (
+            <Polyline
+              positions={encodedPolylinePoints}
+              color="#047857"
+              weight={5}
+              opacity={0.85}
+            />
+          ) : allCoordinates.length > 1 ? (
             <Polyline
               positions={allCoordinates}
               color="#059669"
@@ -120,7 +130,7 @@ export default function RouteMap({
               opacity={0.7}
               dashArray="6, 8"
             />
-          )}
+          ) : null}
 
           {/* Origin Marker */}
           {hasOrigin && (
