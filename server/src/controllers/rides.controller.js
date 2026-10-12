@@ -255,7 +255,8 @@ export const getRides = async (req, res, next) => {
     } = req.query;
 
     const where = {
-      status
+      status,
+      ...(status === 'SCHEDULED' ? { availableSeats: { gt: 0 } } : {})
     };
 
     const fromDate = from && !isNaN(new Date(from).getTime()) ? new Date(from) : null;
@@ -392,6 +393,32 @@ export const getRideById = async (req, res, next) => {
             plateNumber: true,
             seatCapacity: true,
             vehicleType: true
+          }
+        },
+        bookings: {
+          select: {
+            id: true,
+            passengerId: true,
+            seatsBooked: true,
+            status: true,
+            fareContributionTotal: true,
+            distanceKm: true,
+            pickupAddress: true,
+            pickupLatitude: true,
+            pickupLongitude: true,
+            dropAddress: true,
+            dropLatitude: true,
+            dropLongitude: true,
+            isAttended: true,
+            createdAt: true,
+            passenger: {
+              select: {
+                id: true,
+                name: true,
+                avatarUrl: true,
+                phone: true
+              }
+            }
           }
         }
       }

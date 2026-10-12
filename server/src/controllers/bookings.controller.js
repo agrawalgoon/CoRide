@@ -313,14 +313,29 @@ export const createBooking = async (req, res, next) => {
       // Send Notification to Driver
       // --------------------------------------------
 
+      const passenger = await tx.user.findUnique({
+        where: { id: req.user.userId },
+        select: { name: true, phone: true }
+      });
+      const passengerName = passenger?.name || 'A passenger';
+
       await tx.notification.create({
         data: {
           recipientId: ride.driverId,
           senderId: req.user.userId,
           type: 'RIDE_REQUEST_RECEIVED',
           title: 'New Ride Request',
-          message: `Someone wants to book ${requestedSeats} seat(s) on your ride.`,
-          metadata: { bookingId: newBooking.id, rideId }
+          message: `${passengerName} requested ${requestedSeats} seat(s) (Pickup: ${pickupAddress.trim()}, Drop: ${dropAddress.trim()}).`,
+          metadata: {
+            bookingId: newBooking.id,
+            rideId,
+            seatsBooked: requestedSeats,
+            fareContributionTotal: roundedFare,
+            passengerName,
+            passengerPhone: passenger?.phone || null,
+            pickupAddress: pickupAddress.trim(),
+            dropAddress: dropAddress.trim()
+          }
         }
       });
 

@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   User, ShieldCheck, MapPin, Clock, Info, AlertCircle,
-  CheckCircle, Navigation, Loader2, Calculator
+  CheckCircle, Navigation, Loader2, Calculator, Check, X, Users, Map
 } from 'lucide-react';
 import { getRideById } from '../../services/rideService';
-import { createBooking, getBookingQuote } from '../../services/bookingService';
+import { createBooking, getBookingQuote, updateBookingStatus } from '../../services/bookingService';
 import { useAuth } from '../../hooks/useAuth';
 import LocationPickerModal from '../../components/map/LocationPickerModal';
+import RouteMap from '../../components/map/RouteMap';
 
 export default function RideDetails() {
   const { rideId } = useParams();
@@ -31,6 +32,24 @@ export default function RideDetails() {
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
+  const [updatingBookingId, setUpdatingBookingId] = useState(null);
+
+  const handleUpdateBooking = async (bookingId, newStatus) => {
+    setUpdatingBookingId(bookingId);
+    try {
+      await updateBookingStatus(bookingId, newStatus);
+      // Refresh ride data to get updated bookings and seat counts
+      const updatedData = await getRideById(rideId);
+      if (updatedData) {
+        setRide(updatedData);
+      }
+    } catch (err) {
+      console.error('Failed to update booking status:', err);
+      alert(err.response?.data?.message || `Failed to ${newStatus.toLowerCase()} booking.`);
+    } finally {
+      setUpdatingBookingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchRide = async () => {
@@ -233,6 +252,35 @@ export default function RideDetails() {
           )}
         </div>
 
+        {/* Live Interactive Route Map with Passenger Pickups */}
+        <div className="mb-6 space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
+              Route & Pickups Map
+            </h4>
+            {ride.bookings?.some((b) => ['ACCEPTED', 'BOARDED'].includes(b.status)) && (
+              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                {ride.bookings.filter((b) => ['ACCEPTED', 'BOARDED'].includes(b.status)).length} Pickup Point(s) Added
+              </span>
+            )}
+          </div>
+          <RouteMap
+            origin={{
+              latitude: ride.originLatitude,
+              longitude: ride.originLongitude,
+              address: ride.originAddress
+            }}
+            destination={{
+              latitude: ride.destinationLatitude,
+              longitude: ride.destinationLongitude,
+              address: ride.destinationAddress
+            }}
+            bookings={ride.bookings || []}
+            className="h-64 sm:h-72"
+          />
+        </div>
+
         {/* Custom Pickup & Drop Selection */}
         {!isOwnRide && ride.availableSeats >= 1 && (
           <div className="bg-blue-50 p-5 rounded-2xl mb-6 border border-blue-100">
@@ -340,14 +388,126 @@ export default function RideDetails() {
           </div>
         </div>
 
-        {/* Booking Controls */}
+        {/* Booking Controls & Driver Management */}
         {isOwnRide ? (
-          <div className="p-4 bg-slate-100 text-slate-600 rounded-2xl text-center text-sm font-medium">
-            You are the driver of this ride.
+          <div className="space-y-4">
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Driver Roster</span>
+                <p className="text-sm font-bold text-slate-800">
+                  {ride.totalSeats - ride.availableSeats} of {ride.totalSeats} seats filled
+                </p>
+              </div>
+              {ride.availableSeats === 0 ? (
+                <span className="text-xs font-extrabold px-3 py-1 bg-emerald-600 text-white rounded-full">
+                  Full Pool
+                </span>
+              ) : (
+                <span className="text-xs font-bold px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full">
+                  {ride.availableSeats} seat(s) remaining
+                </span>
+              )}
+            </div>
+
+            {/* Bookings & Requests List */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-slate-800 flex items-center justify-between">
+                <span>Passenger Requests & Bookings</span>
+                <span className="text-xs font-normal text-slate-500">
+                  ({(ride.bookings || []).length} total)
+                </span>
+              </h4>
+
+              {(!ride.bookings || ride.bookings.length === 0) ? (
+                <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-center text-xs text-slate-500">
+                  No passengers have requested this ride yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {ride.bookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs">
+                            {b.passenger?.name?.charAt(0) || 'P'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{b.passenger?.name || 'Passenger'}</p>
+                            {b.passenger?.phone && (
+                              <p className="text-[11px] text-slate-400 font-mono">{b.passenger.phone}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              b.status === 'ACCEPTED' || b.status === 'BOARDED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : b.status === 'PENDING'
+                                ? 'bg-amber-100 text-amber-800'
+                                : b.status === 'ARRIVED'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {b.status}
+                          </span>
+                          <p className="text-xs font-bold text-emerald-600 mt-0.5">₹{b.fareContributionTotal}</p>
+                        </div>
+                      </div>
+
+                      {/* Pickup & Drop Points */}
+                      <div className="text-xs bg-slate-50 p-2.5 rounded-xl space-y-1 text-slate-600">
+                        <p className="truncate">
+                          <span className="font-semibold text-emerald-700">Pickup:</span> {b.pickupAddress}
+                        </p>
+                        <p className="truncate">
+                          <span className="font-semibold text-rose-700">Drop:</span> {b.dropAddress}
+                        </p>
+                        <p className="text-[11px] text-slate-400 font-medium">
+                          Seats requested: <span className="font-bold text-slate-700">{b.seatsBooked}</span>
+                        </p>
+                      </div>
+
+                      {/* Accept/Reject Action for PENDING bookings */}
+                      {b.status === 'PENDING' && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={updatingBookingId === b.id}
+                            onClick={() => handleUpdateBooking(b.id, 'ACCEPTED')}
+                            className="flex-1 py-2 px-3 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{updatingBookingId === b.id ? 'Updating...' : 'Accept Request'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={updatingBookingId === b.id}
+                            onClick={() => handleUpdateBooking(b.id, 'REJECTED')}
+                            className="py-2 px-3 bg-slate-100 text-rose-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-rose-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>Reject</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : ride.availableSeats < 1 ? (
-          <div className="p-4 bg-amber-50 text-amber-800 rounded-2xl text-center text-sm font-medium">
-            This ride has no available seats.
+          <div className="p-5 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-center space-y-1">
+            <p className="font-bold text-sm">Ride is completely booked</p>
+            <p className="text-xs text-amber-600">
+              All {ride.totalSeats} seats on this ride are currently filled. Check back later if a seat becomes available.
+            </p>
           </div>
         ) : (
           <div className="space-y-4">

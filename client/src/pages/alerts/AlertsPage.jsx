@@ -1,15 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Calendar, CheckCircle, XCircle, AlertCircle, Info } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  Bell,
+  Calendar,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Info,
+  Check,
+  X,
+  User,
+  ArrowRight
+} from 'lucide-react';
 import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead
 } from '../../services/notificationService';
+import { updateBookingStatus } from '../../services/bookingService';
 
 export default function AlertsPage() {
+  const navigate = useNavigate();
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionStates, setActionStates] = useState({}); // { [bookingId]: 'ACCEPTED' | 'REJECTED' | 'LOADING' }
 
   const fetchAlerts = async () => {
     setLoading(true);
@@ -47,6 +62,19 @@ export default function AlertsPage() {
       );
     } catch (err) {
       console.error('Failed to mark notification read:', err);
+    }
+  };
+
+  const handleBookingAction = async (bookingId, status) => {
+    if (!bookingId) return;
+    setActionStates((prev) => ({ ...prev, [bookingId]: 'LOADING' }));
+    try {
+      await updateBookingStatus(bookingId, status);
+      setActionStates((prev) => ({ ...prev, [bookingId]: status }));
+    } catch (err) {
+      console.error('Failed to update booking status:', err);
+      alert(err.response?.data?.message || `Failed to ${status.toLowerCase()} booking.`);
+      setActionStates((prev) => ({ ...prev, [bookingId]: null }));
     }
   };
 
@@ -129,6 +157,80 @@ export default function AlertsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">{alert.message}</p>
+
+                {/* Dynamic Action Controls for Ride Booking Requests */}
+                {alert.type === 'RIDE_REQUEST_RECEIVED' && alert.metadata?.bookingId && (
+                  <div className="mt-3 pt-3 border-t border-slate-200/80">
+                    {actionStates[alert.metadata.bookingId] === 'ACCEPTED' ? (
+                      <div className="flex items-center space-x-2 text-emerald-700 bg-emerald-100/70 py-1.5 px-3 rounded-xl text-xs font-bold">
+                        <Check className="w-4 h-4" />
+                        <span>Request Accepted</span>
+                      </div>
+                    ) : actionStates[alert.metadata.bookingId] === 'REJECTED' ? (
+                      <div className="flex items-center space-x-2 text-rose-700 bg-rose-100/70 py-1.5 px-3 rounded-xl text-xs font-bold">
+                        <X className="w-4 h-4" />
+                        <span>Request Rejected</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={actionStates[alert.metadata.bookingId] === 'LOADING'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBookingAction(alert.metadata.bookingId, 'ACCEPTED');
+                          }}
+                          className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>
+                            {actionStates[alert.metadata.bookingId] === 'LOADING'
+                              ? 'Processing...'
+                              : 'Accept Request'}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={actionStates[alert.metadata.bookingId] === 'LOADING'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBookingAction(alert.metadata.bookingId, 'REJECTED');
+                          }}
+                          className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 text-rose-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-rose-50 transition-colors disabled:opacity-50"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Reject</span>
+                        </button>
+
+                        {alert.metadata.rideId && (
+                          <Link
+                            to={`/rides/${alert.metadata.rideId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="ml-auto text-xs font-bold text-slate-500 hover:text-emerald-600 flex items-center space-x-1 py-1 px-2"
+                          >
+                            <span>View Ride</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Simple View Ride link for other ride alerts */}
+                {alert.type !== 'RIDE_REQUEST_RECEIVED' && alert.metadata?.rideId && (
+                  <div className="mt-2 text-right">
+                    <Link
+                      to={`/rides/${alert.metadata.rideId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[11px] font-bold text-emerald-600 hover:underline inline-flex items-center space-x-1"
+                    >
+                      <span>View Ride</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
           ))}
