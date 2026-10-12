@@ -29,7 +29,11 @@ export default function Register() {
       login(data.user, data.token);
       navigate('/auth/verify-organization');
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      setError(
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        (err.message === 'Network Error' ? 'Cannot reach server. Ensure backend is running.' : 'Registration failed. Please try again.')
+      );
     } finally {
       setIsLoading(false);
     }

@@ -20,7 +20,11 @@ export default function Login() {
       login(data.user, data.token);
       navigate('/find');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      setError(
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        (err.message === 'Network Error' ? 'Cannot reach server. Ensure backend is running.' : 'Login failed. Please try again.')
+      );
     } finally {
       setIsLoading(false);
     }
