@@ -9,7 +9,8 @@ import {
   AlertCircle,
   Map,
   Crosshair,
-  LoaderCircle
+  LoaderCircle,
+  Repeat
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getVehicles } from '../../services/vehicleService';
@@ -39,6 +40,12 @@ export default function OfferPoolPage() {
   const [seats, setSeats] = useState(3);
   const [pricePerSeat, setPricePerSeat] = useState(50);
   const [pricePerKm, setPricePerKm] = useState(5);
+
+  // Recurring ride state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringPattern, setRecurringPattern] = useState('WEEKDAYS'); // 'WEEKDAYS' | 'DAILY' | 'CUSTOM'
+  const [customDays, setCustomDays] = useState(['MON', 'TUE', 'WED', 'THU', 'FRI']);
+  const [repeatWeeks, setRepeatWeeks] = useState(4);
 
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -143,6 +150,16 @@ export default function OfferPoolPage() {
 
     setIsSubmitting(true);
     try {
+      const resolvedDays =
+        recurringPattern === 'DAILY'
+          ? ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+          : recurringPattern === 'WEEKDAYS'
+          ? ['MON', 'TUE', 'WED', 'THU', 'FRI']
+          : customDays;
+
+      const endDate = new Date(departure);
+      endDate.setDate(endDate.getDate() + repeatWeeks * 7);
+
       const payload = {
         vehicleId: selectedVehicleId,
         originAddress: origin.address,
@@ -155,7 +172,19 @@ export default function OfferPoolPage() {
         totalSeats: Number(seats),
         pricePerSeat: Number(pricePerSeat),
         totalTripCost: Number(pricePerSeat) * Number(seats),
-        pricePerKm: Number(pricePerKm)
+        pricePerKm: Number(pricePerKm),
+        isRecurring: Boolean(isRecurring),
+        ...(isRecurring && {
+          recurringDays: resolvedDays,
+          recurringPattern: {
+            pattern: recurringPattern,
+            recurringDays: resolvedDays,
+            startDate: departure.toISOString(),
+            endDate: endDate.toISOString(),
+            departureTimeOfDay: time,
+            maxInstances: Math.min(60, repeatWeeks * resolvedDays.length)
+          }
+        })
       };
 
       const result = await createRide(payload);
@@ -359,6 +388,112 @@ export default function OfferPoolPage() {
                     className="bg-transparent outline-none w-full text-slate-800 text-sm font-semibold"
                   />
                 </div>
+              </div>
+
+              {/* RECURRING RIDE TOGGLE & OPTIONS */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                      <Repeat className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">Recurring Ride</p>
+                      <p className="text-xs text-slate-500">Auto-schedule this ride for future dates</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isRecurring}
+                      onChange={(e) => setIsRecurring(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {isRecurring && (
+                  <div className="pt-3 border-t border-slate-200 space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                        Repeat Pattern
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: 'WEEKDAYS', label: 'Weekdays (M–F)' },
+                          { id: 'DAILY', label: 'Daily (7 days)' },
+                          { id: 'CUSTOM', label: 'Custom' }
+                        ].map((pat) => (
+                          <button
+                            key={pat.id}
+                            type="button"
+                            onClick={() => setRecurringPattern(pat.id)}
+                            className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${
+                              recurringPattern === pat.id
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {pat.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {recurringPattern === 'CUSTOM' && (
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                          Select Days
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map((day) => {
+                            const isSelected = customDays.includes(day);
+                            return (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => {
+                                  if (isSelected) {
+                                    if (customDays.length > 1) {
+                                      setCustomDays(customDays.filter((d) => d !== day));
+                                    }
+                                  } else {
+                                    setCustomDays([...customDays, day]);
+                                  }
+                                }}
+                                className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                  isSelected
+                                    ? 'bg-emerald-100 border-emerald-400 text-emerald-800'
+                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'
+                                }`}
+                              >
+                                {day}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                        Duration
+                      </label>
+                      <select
+                        value={repeatWeeks}
+                        onChange={(e) => setRepeatWeeks(Number(e.target.value))}
+                        className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500"
+                      >
+                        <option value={1}>Repeat for 1 week</option>
+                        <option value={2}>Repeat for 2 weeks</option>
+                        <option value={3}>Repeat for 3 weeks</option>
+                        <option value={4}>Repeat for 4 weeks (1 month)</option>
+                        <option value={8}>Repeat for 8 weeks (2 months)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -574,7 +709,7 @@ export default function OfferPoolPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 border-b border-slate-200 pb-3">
                 <div>
                   <span className="text-xs uppercase font-bold text-slate-400 block mb-0.5">Vehicle</span>
                   <span className="font-semibold text-slate-800">
@@ -586,6 +721,18 @@ export default function OfferPoolPage() {
                   <span className="font-bold text-emerald-600 text-base">₹{pricePerSeat}</span>
                 </div>
               </div>
+
+              {isRecurring && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start space-x-2.5">
+                  <Repeat className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-bold text-emerald-800">Recurring Ride Scheduled</p>
+                    <p className="text-emerald-700 mt-0.5">
+                      Repeats {recurringPattern === 'WEEKDAYS' ? 'every weekday (Mon–Fri)' : recurringPattern === 'DAILY' ? 'daily (7 days)' : `on ${customDays.join(', ')}`} for {repeatWeeks} week(s) at {time}.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex space-x-3 pt-2">
