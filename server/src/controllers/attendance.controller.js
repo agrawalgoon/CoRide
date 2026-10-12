@@ -841,6 +841,170 @@ export const verifyArrival = async (req, res, next) => {
 };
 
 // ==================================================================
+// POST /api/attendance/verify-geofence (Passenger Pickup Geofence Verification)
+// ==================================================================
+export const verifyGeofence = async (req, res, next) => {
+  try {
+    const {
+      bookingId,
+      passengerLatitude,
+      passengerLongitude,
+      latitude,
+      longitude,
+      accuracy,
+      accuracyMeters
+    } = req.body;
+
+    const rawLat = passengerLatitude !== undefined ? passengerLatitude : latitude;
+    const rawLon = passengerLongitude !== undefined ? passengerLongitude : longitude;
+
+    if (!bookingId || rawLat === undefined || rawLon === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'bookingId, latitude, and longitude are required.'
+      });
+    }
+
+    const coordCheck = validateCoordinates(rawLat, rawLon);
+    if (!coordCheck.valid) {
+      return res.status(400).json({ success: false, message: coordCheck.error });
+    }
+
+    const reportedAccuracy = Number(accuracyMeters ?? accuracy ?? 0);
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        ride: {
+          select: {
+            id: true,
+            driverId: true,
+            status: true,
+            geofenceRadiusMeters: true,
+            originLatitude: true,
+            originLongitude: true
+          }
+        }
+      }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    if (booking.passengerId !== req.user.userId && booking.ride.driverId !== req.user.userId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to verify attendance for this booking.' });
+    }
+
+    if (booking.status !== 'ACCEPTED') {
+      return res.status(400).json({
+        success: false,
+        message: `Attendance not allowed for booking with status '${booking.status}'.`
+      });
+    }
+
+    if (booking.isAttended || booking.status === 'BOARDED') {
+      return res.status(409).json({ success: false, message: 'Passenger has already been boarded.' });
+    }
+
+    const { ride } = booking;
+    const targetLat = booking.pickupLatitude ?? ride.originLatitude;
+    const targetLon = booking.pickupLongitude ?? ride.originLongitude;
+    const allowedRadius = ride.geofenceRadiusMeters || 150;
+
+    const distMeters = distanceMeters(coordCheck.latitude, coordCheck.longitude, targetLat, targetLon);
+    const isGeofenceValid = distMeters <= allowedRadius;
+
+    if (!isGeofenceValid) {
+      return res.status(400).json({
+        success: false,
+        message: `You are ${Math.round(distMeters)}m from the pickup point. Must be within ${allowedRadius}m.`,
+        data: {
+          distanceMeters: Math.round(distMeters),
+          requiredMeters: allowedRadius
+        }
+      });
+    }
+
+    const now = new Date();
+    const result = await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.booking.updateMany({
+        where: {
+          id: bookingId,
+          status: 'ACCEPTED',
+          isAttended: false
+        },
+        data: {
+          status: 'BOARDED',
+          isAttended: true,
+          attendedAt: now,
+          boardingAt: now,
+          attendanceMethod: 'CAMPUS_GEOFENCE',
+          attendanceDistanceMeters: distMeters
+        }
+      });
+
+      if (updateResult.count === 0) {
+        throw new Error('CONCURRENT_DUPLICATE_OR_INVALID_STATE');
+      }
+
+      const log = await tx.attendanceLog.create({
+        data: {
+          bookingId,
+          rideId: ride.id,
+          passengerId: booking.passengerId,
+          method: 'CAMPUS_GEOFENCE',
+          status: 'BOARDED',
+          passengerLatitude: coordCheck.latitude,
+          passengerLongitude: coordCheck.longitude,
+          accuracyMeters: Number.isFinite(reportedAccuracy) ? Math.round(reportedAccuracy) : null,
+          distanceToPickupMeters: distMeters,
+          isGeofenceValid: true,
+          notes: 'Boarded via pickup geofence'
+        },
+        select: logSelect
+      });
+
+      await tx.notification.create({
+        data: {
+          recipientId: ride.driverId,
+          senderId: req.user.userId,
+          type: 'ATTENDANCE_SUCCESS',
+          title: 'Passenger Boarded',
+          message: 'A passenger has verified attendance via geofence.',
+          metadata: { bookingId, rideId: ride.id, status: 'BOARDED' }
+        }
+      });
+
+      return { log };
+    });
+
+    const updatedBooking = await prisma.booking.findUnique({
+      where: { id: bookingId }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Attendance verified via geofence.',
+      data: {
+        booking: updatedBooking,
+        attendanceLog: result.log,
+        geofence: { valid: true, distanceMeters: Math.round(distMeters) }
+      }
+    });
+  } catch (err) {
+    if (err.message === 'CONCURRENT_DUPLICATE_OR_INVALID_STATE') {
+      return res.status(409).json({
+        success: false,
+        message: 'Passenger has already been boarded.'
+      });
+    }
+    next(err);
+  }
+};
+
+
+// ==================================================================
 // 7. POST /api/attendance/mark-no-show (Driver marks passenger NO_SHOW)
 // ==================================================================
 export const markNoShow = async (req, res, next) => {
