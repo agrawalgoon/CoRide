@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, ShieldCheck, Car, History, LogOut, ChevronRight, Mail, Phone, Building } from 'lucide-react';
+import { User, ShieldCheck, Car, History, LogOut, ChevronRight, Mail, Phone, Building, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -104,6 +104,22 @@ export default function ProfilePage() {
             <div>
               <span className="font-semibold text-slate-700 block text-sm">My Vehicles</span>
               <span className="text-xs text-slate-400">Manage cars and bikes for offering rides</span>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400" />
+        </Link>
+
+        <Link
+          to="/profile/driving-license"
+          className="flex items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-700">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-semibold text-slate-700 block text-sm">Driving License</span>
+              <span className="text-xs text-slate-400">Driver verification credentials</span>
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-slate-400" />

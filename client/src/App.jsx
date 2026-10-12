@@ -22,6 +22,7 @@ import AlertsPage from './pages/alerts/AlertsPage';
 import ProfilePage from './pages/profile/ProfilePage';
 import VehiclesPage from './pages/profile/VehiclesPage';
 import RideHistoryPage from './pages/profile/RideHistoryPage';
+import DrivingLicensePage from './pages/profile/DrivingLicensePage';
 
 // Live Ride
 import LiveRidePage from './pages/live/LiveRidePage';
@@ -50,7 +51,9 @@ export default function App() {
           
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/vehicles" element={<VehiclesPage />} />
+          <Route path="/profile/driving-license" element={<DrivingLicensePage />} />
           <Route path="/profile/history" element={<RideHistoryPage />} />
+          <Route path="/my-rides" element={<Navigate to="/profile/history" replace />} />
         </Route>
         
         {/* Catch all */}

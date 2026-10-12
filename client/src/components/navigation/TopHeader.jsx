@@ -21,7 +21,7 @@ export default function TopHeader() {
     },
     {
       to: '/profile/history',
-      label: 'History',
+      label: 'My Rides',
       icon: Calendar
     }
   ];

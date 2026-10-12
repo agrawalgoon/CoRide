@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Car, Plus, Trash2, X, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Car, Plus, Trash2, X, AlertCircle, FileText, ChevronRight } from 'lucide-react';
 import { getVehicles, createVehicle, deleteVehicle } from '../../services/vehicleService';
 
 export default function VehiclesPage() {
@@ -157,6 +158,32 @@ export default function VehiclesPage() {
           ))}
         </div>
       )}
+
+      {/* Offering Rides? Driving License Card matching UI design */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm flex items-center justify-between hover:border-emerald-300 transition-all">
+        <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className="w-14 h-11 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center p-2 text-emerald-700 shadow-2xs">
+            <div className="w-full h-full bg-emerald-50 rounded flex flex-col justify-center items-center">
+              <FileText className="w-5 h-5 text-emerald-600" />
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm sm:text-base font-bold text-slate-800">Offering Rides?</h4>
+            <Link
+              to="/profile/driving-license"
+              className="text-xs sm:text-sm font-semibold text-sky-600 hover:text-sky-700 hover:underline flex items-center gap-1 mt-0.5"
+            >
+              Add Driving License
+            </Link>
+          </div>
+        </div>
+        <Link
+          to="/profile/driving-license"
+          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </Link>
+      </div>
 
       {/* Add Vehicle Modal */}
       {showAddModal && (
