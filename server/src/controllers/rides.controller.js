@@ -1,6 +1,11 @@
 import { prisma } from '../config/db.js';
 import { generateMatches } from '../services/matching/matching.service.js';
 import {
+  computeAuthoritativeRoadRoute,
+  calculateFuelCost,
+  calculateSegmentFairCostSharing
+} from '../services/routing/routing.service.js';
+import {
   resolveRecurringDays,
   calculateRecurringDates,
   generateRecurringRideInstances,
@@ -827,3 +832,96 @@ export const syncRecurringRides = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Compute Authoritative Road Route for any coordinates with optional intermediate waypoints.
+ * POST /api/rides/route
+ */
+export const computeRideRoadRoute = async (req, res, next) => {
+  try {
+    const { origin, destination, intermediates = [], mileageKmPerLitre = 15, fuelPricePerLitre = 105 } = req.body;
+
+    if (!origin || !destination) {
+      return res.status(400).json({
+        success: false,
+        message: 'origin and destination with latitude and longitude are required'
+      });
+    }
+
+    const route = await computeAuthoritativeRoadRoute({
+      origin,
+      destination,
+      intermediates
+    });
+
+    const fuelEstimate = calculateFuelCost({
+      roadDistanceKm: route.distanceKm,
+      mileageKmPerLitre,
+      fuelPricePerLitre
+    });
+
+    return res.status(200).json({
+      success: true,
+      route: {
+        ...route,
+        fuelEstimate
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Compute Segment-based Fair Cost Sharing for a specific ride with active passengers.
+ * GET /api/rides/:id/fair-pricing
+ */
+export const getRideFairCostSharing = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { mileageKmPerLitre = 15, fuelPricePerLitre = 105, driverSharesFuelCost = 'true' } = req.query;
+
+    const ride = await prisma.ride.findUnique({
+      where: { id },
+      include: {
+        vehicle: true,
+        bookings: {
+          where: { status: { in: ['ACCEPTED', 'BOARDED', 'ARRIVED'] } },
+          include: { passenger: { select: { id: true, name: true } } }
+        }
+      }
+    });
+
+    if (!ride) {
+      return res.status(404).json({ success: false, message: 'Ride not found' });
+    }
+
+    const passengers = ride.bookings.map((b) => ({
+      id: b.id,
+      name: b.passenger?.name || 'Passenger',
+      pickup: { latitude: Number(b.pickupLatitude), longitude: Number(b.pickupLongitude) },
+      drop: { latitude: Number(b.dropLatitude), longitude: Number(b.dropLongitude) },
+      seatsBooked: b.seatsBooked || 1
+    }));
+
+    const sharing = await calculateSegmentFairCostSharing({
+      driverRoute: {
+        origin: { latitude: Number(ride.originLatitude), longitude: Number(ride.originLongitude) },
+        destination: { latitude: Number(ride.destinationLatitude), longitude: Number(ride.destinationLongitude) }
+      },
+      passengers,
+      mileageKmPerLitre: Number(mileageKmPerLitre) || 15,
+      fuelPricePerLitre: Number(fuelPricePerLitre) || 105,
+      driverSharesFuelCost: driverSharesFuelCost === 'true' || driverSharesFuelCost === true
+    });
+
+    return res.status(200).json({
+      success: true,
+      rideId: id,
+      sharing
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
