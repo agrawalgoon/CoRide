@@ -69,12 +69,26 @@ export default function AlertsPage() {
     if (!bookingId) return;
     setActionStates((prev) => ({ ...prev, [bookingId]: 'LOADING' }));
     try {
-      await updateBookingStatus(bookingId, status);
+      const res = await updateBookingStatus(bookingId, status);
       setActionStates((prev) => ({ ...prev, [bookingId]: status }));
+      // Silently update notification metadata
+      setAlerts((prev) =>
+        prev.map((a) =>
+          a.metadata?.bookingId === bookingId
+            ? { ...a, metadata: { ...a.metadata, bookingStatus: status } }
+            : a
+        )
+      );
     } catch (err) {
       console.error('Failed to update booking status:', err);
-      alert(err.response?.data?.message || `Failed to ${status.toLowerCase()} booking.`);
-      setActionStates((prev) => ({ ...prev, [bookingId]: null }));
+      const msg = err.response?.data?.message || '';
+      if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('pending')) {
+        // Booking is already processed
+        setActionStates((prev) => ({ ...prev, [bookingId]: status }));
+      } else {
+        alert(msg || `Failed to ${status.toLowerCase()} booking.`);
+        setActionStates((prev) => ({ ...prev, [bookingId]: null }));
+      }
     }
   };
 
@@ -159,19 +173,57 @@ export default function AlertsPage() {
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">{alert.message}</p>
 
                 {/* Dynamic Action Controls for Ride Booking Requests */}
-                {alert.type === 'RIDE_REQUEST_RECEIVED' && alert.metadata?.bookingId && (
-                  <div className="mt-3 pt-3 border-t border-slate-200/80">
-                    {actionStates[alert.metadata.bookingId] === 'ACCEPTED' ? (
-                      <div className="flex items-center space-x-2 text-emerald-700 bg-emerald-100/70 py-1.5 px-3 rounded-xl text-xs font-bold">
-                        <Check className="w-4 h-4" />
-                        <span>Request Accepted</span>
+                {alert.type === 'RIDE_REQUEST_RECEIVED' && alert.metadata?.bookingId && (() => {
+                  const effectiveStatus = actionStates[alert.metadata.bookingId] || alert.metadata?.bookingStatus;
+                  if (['ACCEPTED', 'BOARDED', 'ARRIVED'].includes(effectiveStatus)) {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-emerald-700 bg-emerald-100/70 py-1.5 px-3 rounded-xl text-xs font-bold">
+                          <Check className="w-4 h-4" />
+                          <span>Request Accepted</span>
+                        </div>
+                        {alert.metadata.rideId && (
+                          <Link
+                            to={`/rides/${alert.metadata.rideId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs font-bold text-slate-500 hover:text-emerald-600 flex items-center space-x-1 py-1 px-2"
+                          >
+                            <span>View Ride</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        )}
                       </div>
-                    ) : actionStates[alert.metadata.bookingId] === 'REJECTED' ? (
-                      <div className="flex items-center space-x-2 text-rose-700 bg-rose-100/70 py-1.5 px-3 rounded-xl text-xs font-bold">
-                        <X className="w-4 h-4" />
-                        <span>Request Rejected</span>
+                    );
+                  }
+                  if (effectiveStatus === 'REJECTED') {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-rose-700 bg-rose-100/70 py-1.5 px-3 rounded-xl text-xs font-bold">
+                          <X className="w-4 h-4" />
+                          <span>Request Rejected</span>
+                        </div>
+                        {alert.metadata.rideId && (
+                          <Link
+                            to={`/rides/${alert.metadata.rideId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs font-bold text-slate-500 hover:text-emerald-600 flex items-center space-x-1 py-1 px-2"
+                          >
+                            <span>View Ride</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        )}
                       </div>
-                    ) : (
+                    );
+                  }
+                  if (effectiveStatus === 'CANCELLED') {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs font-bold text-slate-400">
+                        Booking Cancelled
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="mt-3 pt-3 border-t border-slate-200/80">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -214,9 +266,9 @@ export default function AlertsPage() {
                           </Link>
                         )}
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
 
                 {/* Simple View Ride link for other ride alerts */}
                 {alert.type !== 'RIDE_REQUEST_RECEIVED' && alert.metadata?.rideId && (

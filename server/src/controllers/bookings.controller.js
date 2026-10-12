@@ -573,11 +573,18 @@ export const updateBookingStatus = async (
       });
     }
 
+    if (booking.status === status) {
+      return res.status(200).json({
+        success: true,
+        message: `Booking has already been ${status.toLowerCase()}`,
+        booking
+      });
+    }
+
     if (booking.status !== 'PENDING') {
       return res.status(400).json({
         success: false,
-        message:
-          'Only pending bookings can be updated'
+        message: `This booking is already ${booking.status.toLowerCase()} and cannot be updated.`
       });
     }
 

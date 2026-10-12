@@ -27,10 +27,38 @@ export const getNotifications = async (req, res, next) => {
       }
     });
 
+    // Enrich ride request notifications with current booking status
+    const bookingIds = notifications
+      .filter((n) => n.type === 'RIDE_REQUEST_RECEIVED' && n.metadata?.bookingId)
+      .map((n) => n.metadata.bookingId);
+
+    let bookingsMap = {};
+    if (bookingIds.length > 0) {
+      const liveBookings = await prisma.booking.findMany({
+        where: { id: { in: bookingIds } },
+        select: { id: true, status: true }
+      });
+      bookingsMap = Object.fromEntries(liveBookings.map((b) => [b.id, b.status]));
+    }
+
+    const enrichedNotifications = notifications.map((n) => {
+      if (n.type === 'RIDE_REQUEST_RECEIVED' && n.metadata?.bookingId) {
+        const liveStatus = bookingsMap[n.metadata.bookingId] || null;
+        return {
+          ...n,
+          metadata: {
+            ...n.metadata,
+            bookingStatus: liveStatus
+          }
+        };
+      }
+      return n;
+    });
+
     return res.status(200).json({
       success: true,
-      count: notifications.length,
-      notifications
+      count: enrichedNotifications.length,
+      notifications: enrichedNotifications
     });
   } catch (error) {
     next(error);
