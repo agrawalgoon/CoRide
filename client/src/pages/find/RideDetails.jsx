@@ -9,7 +9,7 @@ import { createBooking, getBookingQuote, updateBookingStatus } from '../../servi
 import { useAuth } from '../../hooks/useAuth';
 import LocationPickerModal from '../../components/map/LocationPickerModal';
 import RouteMap from '../../components/map/RouteMap';
-import { getRideFairCostSharing } from '../../services/routingService';
+import { getRideFairCostSharing, getAuthoritativeRoadRoute } from '../../services/routingService';
 
 export default function RideDetails() {
   const { rideId } = useParams();
@@ -36,6 +36,8 @@ export default function RideDetails() {
   const [updatingBookingId, setUpdatingBookingId] = useState(null);
   const [fairPricing, setFairPricing] = useState(null);
   const [fairPricingLoading, setFairPricingLoading] = useState(false);
+  const [roadPolyline, setRoadPolyline] = useState(null);
+  const [routeInfo, setRouteInfo] = useState(null);
 
   const handleUpdateBooking = async (bookingId, newStatus) => {
     setUpdatingBookingId(bookingId);
@@ -75,6 +77,25 @@ export default function RideDetails() {
             latitude: Number(data.destinationLatitude),
             longitude: Number(data.destinationLongitude)
           });
+
+          // Fetch authoritative road route with exact polyline
+          try {
+            const acceptedPickups = (data.bookings || [])
+              .filter((b) => ['ACCEPTED', 'BOARDED', 'ARRIVED'].includes(b.status) && b.pickupLatitude != null)
+              .map((b) => ({ latitude: Number(b.pickupLatitude), longitude: Number(b.pickupLongitude) }));
+
+            const routeData = await getAuthoritativeRoadRoute({
+              origin: { latitude: Number(data.originLatitude), longitude: Number(data.originLongitude) },
+              destination: { latitude: Number(data.destinationLatitude), longitude: Number(data.destinationLongitude) },
+              intermediates: acceptedPickups
+            });
+            setRouteInfo(routeData);
+            if (routeData.encodedPolyline) {
+              setRoadPolyline(routeData.encodedPolyline);
+            }
+          } catch (rErr) {
+            console.error('Failed to load authoritative road polyline:', rErr);
+          }
 
           // Fetch segment fair cost breakdown if available
           try {
@@ -270,14 +291,21 @@ export default function RideDetails() {
         <div className="mb-6 space-y-2">
           <div className="flex items-center justify-between">
             <h4 className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
-              Route & Pickups Map
+              Route &amp; Pickups Map
             </h4>
-            {ride.bookings?.some((b) => ['ACCEPTED', 'BOARDED'].includes(b.status)) && (
-              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                {ride.bookings.filter((b) => ['ACCEPTED', 'BOARDED'].includes(b.status)).length} Pickup Point(s) Added
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {routeInfo && (
+                <span className="text-[10px] uppercase font-extrabold tracking-wide px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  {routeInfo.distanceKm} km Road • {routeInfo.durationMinutes} mins ({routeInfo.provider === 'google_routes' ? 'Google Routes' : routeInfo.provider === 'openrouteservice' ? 'OpenRouteService' : 'OSRM Road'})
+                </span>
+              )}
+              {ride.bookings?.some((b) => ['ACCEPTED', 'BOARDED'].includes(b.status)) && (
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {ride.bookings.filter((b) => ['ACCEPTED', 'BOARDED'].includes(b.status)).length} Pickup Point(s) Added
+                </span>
+              )}
+            </div>
           </div>
           <RouteMap
             origin={{
@@ -291,6 +319,7 @@ export default function RideDetails() {
               address: ride.destinationAddress
             }}
             bookings={ride.bookings || []}
+            polyline={roadPolyline}
             className="h-64 sm:h-72"
           />
         </div>
