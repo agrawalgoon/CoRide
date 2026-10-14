@@ -10,12 +10,20 @@ import {
   startRide,
   getMatches,
   cancelRecurringSeries,
-  syncRecurringRides
+  syncRecurringRides,
+  computeRideRoadRoute,
+  getRideFairCostSharing
 } from '../controllers/rides.controller.js';
 
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 const router = Router();
+
+// Road routing & fuel estimation (public or protected)
+router.post('/route', computeRideRoadRoute);
+
+// Segment-based fair cost sharing breakdown for a ride
+router.get('/:id/fair-pricing', authenticateToken, getRideFairCostSharing);
 
 // Protected: AI matching for passenger
 router.get('/matches', authenticateToken, getMatches);
