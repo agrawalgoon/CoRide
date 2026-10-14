@@ -48,6 +48,8 @@ export const errorHandler = (err, req, res, next) => {
 
   res.status(statusCode).json({
     success: false,
+    message,
+    ...(err.incompatible ? { incompatible: true, suggestions: err.suggestions || [], canCreateNewRide: true } : {}),
     error: {
       message,
       code,

@@ -7,6 +7,18 @@ import { sendVerificationOtpEmail } from '../services/email.service.js';
 /**
  * Get profile information for currently authenticated user.
  */
+export const maskLicenseNumber = (dl) => {
+  if (!dl || dl.length <= 4) return dl || '';
+  const clean = dl.trim();
+  if (clean.length <= 8) {
+    return clean.slice(0, 2) + '*'.repeat(clean.length - 4) + clean.slice(-2);
+  }
+  const visiblePrefix = clean.slice(0, 4);
+  const visibleSuffix = clean.slice(-4);
+  const maskedMiddle = '*'.repeat(clean.length - 8);
+  return `${visiblePrefix}${maskedMiddle}${visibleSuffix}`;
+};
+
 export const getMe = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -23,6 +35,8 @@ export const getMe = async (req, res, next) => {
         verificationStatus: true,
         isVerified: true,
         avatarUrl: true,
+        dlNumber: true,
+        isDlVerified: true,
         createdAt: true,
         updatedAt: true
       }
@@ -40,7 +54,10 @@ export const getMe = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      user
+      user: {
+        ...user,
+        dlNumber: user.dlNumber ? maskLicenseNumber(user.dlNumber) : null
+      }
     });
   } catch (error) {
     next(error);
@@ -500,6 +517,115 @@ export const verifyOrganizationOtp = async (req, res, next) => {
       success: true,
       message: 'Organization email verified successfully',
       user: updatedUser
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get Driving License information (securely masked) for authenticated user.
+ * GET /api/users/license
+ */
+export const getDrivingLicense = async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: {
+        dlNumber: true,
+        dlPhotoUrl: true,
+        isDlVerified: true,
+        verificationStatus: true,
+        preferences: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const preferences = (typeof user.preferences === 'object' && user.preferences !== null)
+      ? user.preferences
+      : {};
+
+    return res.status(200).json({
+      success: true,
+      license: {
+        licenseNumber: user.dlNumber ? maskLicenseNumber(user.dlNumber) : '',
+        holderName: preferences.dlHolderName || '',
+        expiryDate: preferences.dlExpiryDate || '',
+        dlPhotoUrl: user.dlPhotoUrl || '',
+        isVerified: user.isDlVerified,
+        verificationStatus: user.verificationStatus
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update and securely record driving license details.
+ * PUT /api/users/license
+ */
+export const updateDrivingLicense = async (req, res, next) => {
+  try {
+    const { licenseNumber, holderName, expiryDate, dlPhotoUrl } = req.body;
+
+    const normalizedDlNumber = licenseNumber.trim().toUpperCase().replace(/\s+/g, ' ');
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { id: true, isOrgVerified: true, preferences: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const currentPreferences = (typeof user.preferences === 'object' && user.preferences !== null)
+      ? user.preferences
+      : {};
+
+    const updatedPreferences = {
+      ...currentPreferences,
+      dlHolderName: holderName.trim(),
+      dlExpiryDate: expiryDate,
+      dlSubmittedAt: new Date().toISOString()
+    };
+
+    const nextVerificationStatus = user.isOrgVerified ? 'FULLY_VERIFIED' : 'DOCS_SUBMITTED';
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        dlNumber: normalizedDlNumber,
+        dlPhotoUrl: dlPhotoUrl ? dlPhotoUrl.trim() : null,
+        isDlVerified: true,
+        verificationStatus: nextVerificationStatus,
+        preferences: updatedPreferences
+      },
+      select: {
+        id: true,
+        name: true,
+        dlNumber: true,
+        dlPhotoUrl: true,
+        isDlVerified: true,
+        verificationStatus: true
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Driving license details verified and securely saved',
+      license: {
+        licenseNumber: maskLicenseNumber(updatedUser.dlNumber),
+        holderName: holderName.trim(),
+        expiryDate,
+        dlPhotoUrl: updatedUser.dlPhotoUrl,
+        isVerified: updatedUser.isDlVerified,
+        verificationStatus: updatedUser.verificationStatus
+      }
     });
   } catch (error) {
     next(error);

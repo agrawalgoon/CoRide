@@ -24,6 +24,12 @@ export default function OfferPoolPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editParamId = searchParams.get('edit');
+  const prefillPickupLat = searchParams.get('pickupLat');
+  const prefillPickupLon = searchParams.get('pickupLon');
+  const prefillPickupAddr = searchParams.get('pickupAddress');
+  const prefillDropLat = searchParams.get('dropLat');
+  const prefillDropLon = searchParams.get('dropLon');
+  const prefillDropAddr = searchParams.get('dropAddress');
 
   // Form state
   const [editingRideId, setEditingRideId] = useState(null);
@@ -32,7 +38,7 @@ export default function OfferPoolPage() {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [seats, setSeats] = useState(3);
-  const [pricePerSeat, setPricePerSeat] = useState(3.00);
+  const [pricePerSeat, setPricePerSeat] = useState(50.00); // Standard INR rate
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringDays, setRecurringDays] = useState(['MON', 'TUE', 'WED', 'THU', 'FRI']);
 
@@ -87,6 +93,35 @@ export default function OfferPoolPage() {
       loadRideForEdit(editParamId);
     }
   }, [editParamId]);
+
+  // Handle prefill parameters when creating a new ride from alternative suggestions
+  useEffect(() => {
+    if (prefillPickupLat && prefillPickupLon) {
+      setOrigin({
+        address: prefillPickupAddr || `${Number(prefillPickupLat).toFixed(4)}, ${Number(prefillPickupLon).toFixed(4)}`,
+        latitude: Number(prefillPickupLat),
+        longitude: Number(prefillPickupLon)
+      });
+    }
+    if (prefillDropLat && prefillDropLon) {
+      setDestination({
+        address: prefillDropAddr || `${Number(prefillDropLat).toFixed(4)}, ${Number(prefillDropLon).toFixed(4)}`,
+        latitude: Number(prefillDropLat),
+        longitude: Number(prefillDropLon)
+      });
+    }
+  }, [prefillPickupLat, prefillPickupLon, prefillPickupAddr, prefillDropLat, prefillDropLon, prefillDropAddr]);
+
+  // Determine active vehicle and maximum passenger seating capacity
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+  const maxPassengerSeats = Math.max(1, (selectedVehicle?.seatCapacity || 5) - 1);
+
+  // Automatically clamp selected seats if current vehicle has fewer seats
+  useEffect(() => {
+    if (selectedVehicle && seats > maxPassengerSeats) {
+      setSeats(maxPassengerSeats);
+    }
+  }, [selectedVehicle, maxPassengerSeats, seats]);
 
   // Recalculate authoritative road route and fuel estimation whenever origin or destination changes
   useEffect(() => {
@@ -612,11 +647,16 @@ export default function OfferPoolPage() {
 
                   {/* Seat Selection Buttons */}
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 mb-2 block">
-                      Available Passenger Seats
-                    </label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[1, 2, 3, 4].map((num) => (
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-semibold text-slate-600 block">
+                        Available Passenger Seats
+                      </label>
+                      <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Vehicle allows max {maxPassengerSeats} passenger{maxPassengerSeats > 1 ? 's' : ''} ({selectedVehicle?.seatCapacity || 5}-seat total)
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {Array.from({ length: maxPassengerSeats }, (_, i) => i + 1).map((num) => (
                         <button
                           key={num}
                           type="button"
@@ -636,22 +676,22 @@ export default function OfferPoolPage() {
                   {/* Fuel Contribution Input */}
                   <div>
                     <label className="text-xs font-semibold text-slate-600 mb-2 block">
-                      Fuel Contribution / Seat
+                      Fuel Contribution / Seat (Base Rate)
                     </label>
                     <div className="flex items-center border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/80 focus-within:border-emerald-600 focus-within:bg-white transition-all max-w-xs">
-                      <span className="px-3.5 text-sm font-bold text-slate-500 bg-white border-r border-slate-200 py-2.5">
-                        $
+                      <span className="px-3.5 text-sm font-bold text-slate-600 bg-white border-r border-slate-200 py-2.5">
+                        ₹
                       </span>
                       <input
                         type="number"
                         min="0"
-                        step="0.50"
+                        step="1.00"
                         value={pricePerSeat}
                         onChange={(e) => setPricePerSeat(parseFloat(e.target.value) || 0)}
                         className="flex-1 px-3 py-2.5 text-sm font-bold text-slate-800 bg-transparent outline-none"
                       />
-                      <span className="pr-3.5 text-xs font-bold text-slate-400">
-                        USD
+                      <span className="pr-3.5 text-xs font-bold text-slate-500">
+                        INR
                       </span>
                     </div>
                   </div>
@@ -669,7 +709,7 @@ export default function OfferPoolPage() {
                       >
                         {vehicles.map((v) => (
                           <option key={v.id} value={v.id}>
-                            {v.color} {v.make} {v.model} ({v.plateNumber})
+                            {v.color} {v.make} {v.model} ({v.plateNumber}) • {v.seatCapacity} seats ({Math.max(1, v.seatCapacity - 1)} passenger max)
                           </option>
                         ))}
                       </select>

@@ -172,7 +172,7 @@ export default function ActiveCommutesPanel({ onRefreshRequest, onEditCommute })
               {/* Meta information */}
               <p className="text-xs text-slate-500 font-medium">
                 {ride.availableSeats} of {ride.totalSeats} Available&nbsp;•&nbsp;
-                <span className="text-slate-700 font-semibold">${Number(ride.pricePerSeat).toFixed(2)} / seat</span>
+                <span className="text-slate-700 font-semibold">₹{Number(ride.pricePerSeat).toFixed(2)} / seat</span>
               </p>
 
               {/* Action buttons matching screenshot */}

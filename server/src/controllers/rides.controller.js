@@ -107,6 +107,20 @@ export const createRide = async (req, res, next) => {
       });
     }
 
+    // Verify driver has a registered driving license
+    const driverUser = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { dlNumber: true, isDlVerified: true }
+    });
+
+    if (!driverUser || !driverUser.dlNumber) {
+      return res.status(403).json({
+        success: false,
+        message: 'A valid driving license is required to offer rides. Please add your license in your profile.',
+        code: 'DRIVING_LICENSE_REQUIRED'
+      });
+    }
+
     const requestedSeats =
       totalSeats !== undefined
         ? Number(totalSeats)
@@ -484,11 +498,38 @@ export const updateRide = async (req, res, next) => {
       destinationLatitude,
       destinationLongitude,
       departureTime,
+      totalSeats,
       pricePerSeat,
       ladiesOnly,
       luggageAllowed,
       geofenceRadiusMeters
     } = req.body;
+
+    let updatedTotalSeats = undefined;
+    let updatedAvailableSeats = undefined;
+
+    if (totalSeats !== undefined) {
+      const parsedSeats = Number(totalSeats);
+      const vehicle = await prisma.vehicle.findUnique({
+        where: { id: existingRide.vehicleId }
+      });
+      const maxSeats = (vehicle?.seatCapacity || 5) - 1;
+      if (!Number.isInteger(parsedSeats) || parsedSeats < 1 || parsedSeats > maxSeats) {
+        return res.status(400).json({
+          success: false,
+          message: `totalSeats must be an integer between 1 and ${maxSeats}`
+        });
+      }
+      const bookedSeatsCount = existingRide.totalSeats - existingRide.availableSeats;
+      if (parsedSeats < bookedSeatsCount) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot reduce totalSeats below currently booked seats (${bookedSeatsCount})`
+        });
+      }
+      updatedTotalSeats = parsedSeats;
+      updatedAvailableSeats = parsedSeats - bookedSeatsCount;
+    }
 
     if (departureTime !== undefined) {
       const parsedDepartureTime = new Date(departureTime);
@@ -503,6 +544,10 @@ export const updateRide = async (req, res, next) => {
     const ride = await prisma.ride.update({
       where: { id },
       data: {
+        ...(updatedTotalSeats !== undefined && {
+          totalSeats: updatedTotalSeats,
+          availableSeats: updatedAvailableSeats
+        }),
         ...(originAddress !== undefined && {
           originAddress: originAddress.trim()
         }),

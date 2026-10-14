@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   User, ShieldCheck, MapPin, Clock, Info, AlertCircle,
-  CheckCircle, Navigation, Loader2, Calculator, Check, X, Users, Map
+  CheckCircle, Navigation, Loader2, Calculator, Check, X, Users, Map,
+  Sparkles, Car, PlusCircle, ArrowRight, AlertTriangle
 } from 'lucide-react';
 import { getRideById } from '../../services/rideService';
 import { createBooking, getBookingQuote, updateBookingStatus } from '../../services/bookingService';
@@ -33,6 +34,8 @@ export default function RideDetails() {
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
+  const [alternativeSuggestions, setAlternativeSuggestions] = useState([]);
+  const [incompatibleReason, setIncompatibleReason] = useState('');
   const [updatingBookingId, setUpdatingBookingId] = useState(null);
   const [fairPricing, setFairPricing] = useState(null);
   const [fairPricingLoading, setFairPricingLoading] = useState(false);
@@ -121,10 +124,12 @@ export default function RideDetails() {
     }
   }, [rideId]);
 
-  // Clear quote when pickup/drop/seats change
+  // Clear quote and suggestions when pickup/drop/seats change
   useEffect(() => {
     setQuote(null);
     setQuoteError('');
+    setAlternativeSuggestions([]);
+    setIncompatibleReason('');
   }, [pickup, drop, seatsBooked]);
 
   const handleGetQuote = async () => {
@@ -132,6 +137,8 @@ export default function RideDetails() {
     setQuoteLoading(true);
     setQuoteError('');
     setQuote(null);
+    setAlternativeSuggestions([]);
+    setIncompatibleReason('');
 
     try {
       const result = await getBookingQuote({
@@ -145,9 +152,13 @@ export default function RideDetails() {
       setQuote(result);
     } catch (err) {
       console.error('Quote failed:', err);
-      setQuoteError(
-        err.response?.data?.message || 'Unable to calculate fare. Please check your locations.'
-      );
+      const data = err.response?.data;
+      const msg = data?.message || data?.error?.message || 'Unable to calculate fare. Please check your locations.';
+      setQuoteError(msg);
+      if (data?.incompatible || data?.suggestions) {
+        setIncompatibleReason(msg);
+        setAlternativeSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
+      }
     } finally {
       setQuoteLoading(false);
     }
@@ -174,10 +185,13 @@ export default function RideDetails() {
       navigate('/profile/history');
     } catch (err) {
       console.error('Failed to book ride:', err);
-      setBookingError(
-        err.response?.data?.message ||
-        'Failed to book ride. Please ensure you are not booking your own ride or that seats are available.'
-      );
+      const data = err.response?.data;
+      const msg = data?.message || data?.error?.message || 'Failed to book ride. Please ensure you are not booking your own ride or that seats are available.';
+      setBookingError(msg);
+      if (data?.incompatible || data?.suggestions) {
+        setIncompatibleReason(msg);
+        setAlternativeSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
+      }
     } finally {
       setBookingLoading(false);
     }
@@ -320,6 +334,7 @@ export default function RideDetails() {
             }}
             bookings={ride.bookings || []}
             polyline={roadPolyline}
+            routeInfo={routeInfo}
             className="h-64 sm:h-72"
           />
         </div>
@@ -474,6 +489,110 @@ export default function RideDetails() {
             {quoteError && (
               <div className="mt-2 p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
                 {quoteError}
+              </div>
+            )}
+
+            {/* Alternative Ride Suggestions & Smart Pairing (Requirement 7) */}
+            {(incompatibleReason || alternativeSuggestions.length > 0) && (
+              <div className="mt-4 p-4 rounded-2xl bg-amber-50/95 border border-amber-200/90 space-y-3.5">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h5 className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+                      Route Incompatible with this Carpool
+                    </h5>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      {incompatibleReason || quoteError}
+                    </p>
+                    <p className="text-[11px] text-amber-700 font-medium mt-1">
+                      To ensure fair travel times and prevent huge detours, CoRide pairs users only on compatible road corridors.
+                    </p>
+                  </div>
+                </div>
+
+                {alternativeSuggestions.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-amber-200/70">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        Suggested Alternative Carpools for Your Route:
+                      </span>
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                        {alternativeSuggestions.length} Found
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {alternativeSuggestions.map((s) => (
+                        <div
+                          key={s.rideId}
+                          className="p-3 bg-white rounded-xl border border-amber-200/80 hover:border-emerald-400 transition-colors shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-800">
+                                {s.driverName} ({Number(s.driverRating).toFixed(1)} ★)
+                              </span>
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                {s.overallScore}% Match
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {s.vehicleInfo ? `${s.vehicleInfo} • ` : ''}{s.availableSeats} seat(s) available
+                            </p>
+                            <p className="text-[11px] text-emerald-700 font-medium">
+                              ✓ {s.reason}
+                            </p>
+                            {s.estimatedFare != null && (
+                              <p className="text-xs font-bold text-slate-800">
+                                Fair Share Fare: <span className="text-emerald-800 font-extrabold">₹{s.estimatedFare}</span>
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/rides/${s.rideId}`)}
+                            className="shrink-0 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                          >
+                            <span>Switch to Ride</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Option to create entirely new ride */}
+                <div className="pt-2 border-t border-amber-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">
+                      Need a ride on your own schedule?
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Start and offer an entirely new carpool pool with your exact pickup and drop coordinates.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      if (pickup.latitude != null) params.set('pickupLat', pickup.latitude);
+                      if (pickup.longitude != null) params.set('pickupLon', pickup.longitude);
+                      if (pickup.address) params.set('pickupAddress', pickup.address);
+                      if (drop.latitude != null) params.set('dropLat', drop.latitude);
+                      if (drop.longitude != null) params.set('dropLon', drop.longitude);
+                      if (drop.address) params.set('dropAddress', drop.address);
+                      navigate(`/offer?${params.toString()}`);
+                    }}
+                    className="shrink-0 px-3.5 py-2 bg-white border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Create &amp; Offer New Ride</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

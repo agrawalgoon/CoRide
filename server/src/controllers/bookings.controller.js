@@ -1,5 +1,6 @@
 import { prisma } from '../config/db.js';
 import { validateRouteCompatibility, calculatePassengerFare } from '../services/routing/routing.service.js';
+import { generateMatches } from '../services/matching/matching.service.js';
 
 // --------------------------------------------------
 // Distance calculation using Haversine formula
@@ -225,8 +226,40 @@ export const createBooking = async (req, res, next) => {
       );
 
       if (!routeCheck.valid) {
+        let suggestions = [];
+        try {
+          const matches = await generateMatches({
+            passengerId: req.user.userId,
+            passengerOrgId: null,
+            pickupLatitude: pickupLat,
+            pickupLongitude: pickupLon,
+            dropLatitude: dropLat,
+            dropLongitude: dropLon,
+            departureTime: ride.departureTime || new Date(),
+            seats: requestedSeats
+          });
+          suggestions = matches
+            .filter((m) => m.rideId !== ride.id && (m.ride?.availableSeats || 0) >= requestedSeats)
+            .slice(0, 3)
+            .map((m) => ({
+              rideId: m.rideId,
+              overallScore: m.overallScore,
+              driverName: m.ride?.driver?.name || 'Verified Driver',
+              driverRating: m.ride?.driver?.driverRatingAvg || 5.0,
+              vehicleInfo: `${m.ride?.vehicle?.color || ''} ${m.ride?.vehicle?.make || ''} ${m.ride?.vehicle?.model || ''}`.trim(),
+              originAddress: m.ride?.originAddress,
+              destinationAddress: m.ride?.destinationAddress,
+              departureTime: m.ride?.departureTime,
+              availableSeats: m.ride?.availableSeats,
+              estimatedFare: m.details?.calculatedFare,
+              reason: m.reasons?.[0] || 'Compatible road route passing close to your pickup'
+            }));
+        } catch {}
+
         const error = new Error(routeCheck.reason);
         error.statusCode = 400;
+        error.incompatible = true;
+        error.suggestions = suggestions;
         throw error;
       }
 
@@ -861,9 +894,47 @@ export const getBookingQuote = async (req, res, next) => {
     );
 
     if (!routeCheck.valid) {
+      let suggestions = [];
+      try {
+        const matches = await generateMatches({
+          passengerId: req.user?.userId || 'guest',
+          passengerOrgId: null,
+          pickupLatitude: pickupLat,
+          pickupLongitude: pickupLon,
+          dropLatitude: dropLat,
+          dropLongitude: dropLon,
+          departureTime: ride.departureTime || new Date(),
+          seats: requestedSeats
+        });
+
+        suggestions = matches
+          .filter((m) => m.rideId !== ride.id && (m.ride?.availableSeats || 0) >= requestedSeats)
+          .slice(0, 3)
+          .map((m) => ({
+            rideId: m.rideId,
+            overallScore: m.overallScore,
+            driverName: m.ride?.driver?.name || 'Verified Driver',
+            driverRating: m.ride?.driver?.driverRatingAvg || 5.0,
+            vehicleInfo: `${m.ride?.vehicle?.color || ''} ${m.ride?.vehicle?.make || ''} ${m.ride?.vehicle?.model || ''}`.trim(),
+            originAddress: m.ride?.originAddress,
+            destinationAddress: m.ride?.destinationAddress,
+            departureTime: m.ride?.departureTime,
+            availableSeats: m.ride?.availableSeats,
+            pickupCorridorKm: m.details?.pickupCorridorKm,
+            detourKm: m.details?.detourKm,
+            estimatedFare: m.details?.calculatedFare,
+            reason: m.reasons?.[0] || 'Compatible road route passing close to your pickup'
+          }));
+      } catch (err) {
+        console.warn('Failed to generate suggestions in quote:', err.message);
+      }
+
       return res.status(400).json({
         success: false,
-        message: routeCheck.reason
+        incompatible: true,
+        message: routeCheck.reason,
+        suggestions,
+        canCreateNewRide: true
       });
     }
 

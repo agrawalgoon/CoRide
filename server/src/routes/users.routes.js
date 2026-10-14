@@ -3,13 +3,16 @@ import {
   getMe,
   linkOrganization,
   requestOrganizationOtp,
-  verifyOrganizationOtp
+  verifyOrganizationOtp,
+  getDrivingLicense,
+  updateDrivingLicense
 } from '../controllers/users.controller.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
   requestOtpSchema,
-  verifyOtpSchema
+  verifyOtpSchema,
+  drivingLicenseSchema
 } from '../validators/user.validator.js';
 
 import rateLimit from 'express-rate-limit';
@@ -49,6 +52,10 @@ const otpVerifyLimiter = rateLimit({
 
 // Protected profile route: GET /api/users/me
 router.get('/me', authenticateToken, getMe);
+
+// Driving License: GET /api/users/license and PUT /api/users/license
+router.get('/license', authenticateToken, getDrivingLicense);
+router.put('/license', authenticateToken, validate(drivingLicenseSchema), updateDrivingLicense);
 
 // Organization linking: POST /api/users/organization
 router.post('/organization', authenticateToken, linkOrganization);
