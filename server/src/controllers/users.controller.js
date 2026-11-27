@@ -30,6 +30,13 @@ export const getMe = async (req, res, next) => {
         phone: true,
         role: true,
         organizationId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            campusHubName: true
+          }
+        },
         orgEmail: true,
         isOrgVerified: true,
         verificationStatus: true,
