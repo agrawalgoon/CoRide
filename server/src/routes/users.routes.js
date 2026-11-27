@@ -25,6 +25,7 @@ const otpRequestLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     message: 'Too many OTP requests from this network. Please try again later.',
@@ -40,6 +41,7 @@ const otpVerifyLimiter = rateLimit({
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     message: 'Too many OTP verification attempts. Please wait before trying again.',

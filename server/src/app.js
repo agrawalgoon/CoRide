@@ -23,6 +23,9 @@ import {
 
 const app = express();
 
+// Trust reverse proxy (Render, Vercel, Cloudflare) for rate limiting & secure cookies
+app.set('trust proxy', 1);
+
 /* =========================================================
    CORS
    =========================================================
@@ -65,6 +68,7 @@ const apiLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     error: {
