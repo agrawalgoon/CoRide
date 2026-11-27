@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import { ENV } from '../config/env.js';
 
 /**
@@ -89,18 +90,39 @@ export const sendVerificationOtpEmail = async ({
     return { delivered: true, provider: 'resend', id: data?.id };
   }
 
-  // 2. SMTP Provider (Simple HTTP relay or custom SMTP implementation)
+  // 2. SMTP Provider (e.g. Gmail SMTP)
   if (provider === 'smtp') {
-    // If SMTP host is configured, we validate mandatory settings
-    if (!ENV.SMTP_HOST || !ENV.SMTP_USER || !ENV.SMTP_PASS) {
-      const err = new Error('Incomplete SMTP configuration (SMTP_HOST, SMTP_USER, or SMTP_PASS missing)');
+    if (!ENV.SMTP_USER || !ENV.SMTP_PASS) {
+      const err = new Error('Incomplete SMTP configuration (SMTP_USER or SMTP_PASS missing)');
       err.code = 'EMAIL_CONFIG_ERROR';
       throw err;
     }
 
-    // For environments using external SMTP relays, log acceptance
-    return { delivered: true, provider: 'smtp' };
+    const host = ENV.SMTP_HOST || 'smtp.gmail.com';
+    const port = Number(ENV.SMTP_PORT) || 465;
+    const secure = ENV.SMTP_SECURE !== false && (ENV.SMTP_SECURE === true || port === 465);
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: {
+        user: ENV.SMTP_USER,
+        pass: ENV.SMTP_PASS
+      }
+    });
+
+    const info = await transporter.sendMail({
+      from: ENV.EMAIL_FROM || `"CoRide" <${ENV.SMTP_USER}>`,
+      to,
+      subject,
+      text: textContent,
+      html: htmlContent
+    });
+
+    return { delivered: true, provider: 'smtp', id: info.messageId };
   }
+
 
   // 3. Fallback: Console Transport (Safe Development / Offline Mode)
   if (ENV.NODE_ENV !== 'production' || provider === 'console') {

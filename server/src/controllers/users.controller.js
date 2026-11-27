@@ -321,8 +321,8 @@ export const requestOrganizationOtp = async (req, res, next) => {
       expiresInMinutes
     };
 
-    // Development only: expose devOtp for rapid automated testing
-    if (ENV.NODE_ENV !== 'production') {
+    // Expose devOtp for testing or when using simulated console email provider
+    if (ENV.NODE_ENV !== 'production' || (ENV.EMAIL_PROVIDER || 'console').toLowerCase() === 'console') {
       responsePayload.devOtp = otp;
     }
 
