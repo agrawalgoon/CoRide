@@ -100,8 +100,9 @@ useEffect(() => {
       // 2. Automatically request OTP
       const otpResponse = await requestOrganizationOtp();
 
-      if (otpResponse.devOtp) {
-        setDevOtp(otpResponse.devOtp);
+      const receivedDevOtp = otpResponse?.devOtp || otpResponse?.data?.devOtp;
+      if (receivedDevOtp) {
+        setDevOtp(String(receivedDevOtp));
       }
 
       setStep(2);
@@ -120,8 +121,9 @@ useEffect(() => {
     setDevOtp('');
     try {
       const otpResponse = await requestOrganizationOtp();
-      if (otpResponse.devOtp) {
-        setDevOtp(otpResponse.devOtp);
+      const receivedDevOtp = otpResponse?.devOtp || otpResponse?.data?.devOtp;
+      if (receivedDevOtp) {
+        setDevOtp(String(receivedDevOtp));
       }
       setCountdown(60);
       setOtp(['', '', '', '', '', '']);
@@ -280,12 +282,21 @@ useEffect(() => {
             </div>
 
             {devOtp && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start space-x-2 text-sm text-blue-800">
-                <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
-                <div>
-                  <p className="font-semibold">Development Helper</p>
-                  <p>Development OTP: <span className="font-mono font-bold">{devOtp}</span></p>
+              <div className="mt-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-sm text-emerald-900 shadow-sm animate-in fade-in">
+                <div className="flex items-center space-x-2.5">
+                  <Info className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+                  <div>
+                    <p className="font-bold text-xs uppercase text-emerald-700 tracking-wide">Demo / Testing Helper</p>
+                    <p className="text-sm font-medium">Verification Code: <span className="font-mono font-extrabold text-base text-emerald-950 tracking-widest">{devOtp}</span></p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setOtp(String(devOtp).split(''))}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                >
+                  Auto-fill
+                </button>
               </div>
             )}
 
